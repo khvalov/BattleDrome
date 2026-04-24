@@ -61,7 +61,7 @@ These parameters define the software constraints for the robot's operation:
 
 | Property | Value | Description |
 | :--- | :--- | :--- |
-| **Speed Range** | `0 - 255` | PWM intensity for motor control |
+| **Speed Range** | `0 - 255` | Power intensity for motor control |
 | **Max Armor** | `100` | Health/Integrity threshold |
 | **Ammo Capacity** | `100` | Maximum ammunition count |
 | **Ammo Power** | `10` | Damage/Impact value per unit |
