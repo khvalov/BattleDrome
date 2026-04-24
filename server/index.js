@@ -36,7 +36,14 @@ mqttClient.on('message', (topic, raw) => {
   let payload;
   try { payload = JSON.parse(raw.toString()); } catch { return; }
 
-  setTank(tankId, { online: true, lastSeen: Date.now(), lastEvent: payload });
+  const patch = { online: true, lastSeen: Date.now(), lastEvent: payload };
+
+  // Merge telemetry data into persistent tank state
+  if (payload?.event?.type === 'telemetry' && payload.event.data) {
+    patch.telemetry = { ...((tanks[tankId] || {}).telemetry || {}), ...payload.event.data };
+  }
+
+  setTank(tankId, patch);
   broadcast({ type: 'update', tanks: snapshot() });
 });
 
