@@ -63,6 +63,15 @@ The server-side logic allows for flexible game modes:
 
 ---
 
+And this will produce a flow chart:
+
+```mermaid
+graph LR
+A[Tank] --> WiFi--> B((MQTT))--> D{Server}
+D-->B-->WiFi-->A
+
+---
+
 ## 6. Contributing
 This is a community-driven pet project. There are no limits to creativity.
 -   **Hardware:** Design new tank chassis or specialized turrets.
