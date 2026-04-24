@@ -69,6 +69,7 @@ And this will produce a flow chart:
 graph LR
 A[Tank] --> WiFi--> B((MQTT))--> D{Server}
 D-->B-->WiFi-->A
+```
 
 ---
 
