@@ -7,7 +7,7 @@ BattleDrome is a hybrid tactical platform merging the physical thrill of battle 
 The "BattleDrome" ecosystem consists of physical hardware units that possess digital attributes. Unlike traditional RC toys, a BattleDrome tank's performance—its speed, health, and firepower—is managed in real-time by a central server via WiFi.
 
 ### The Feedback Loop
-1.  **Input:** Players steer tanks via a remote controller or web dashboard.
+1.  **Input:** Players steer tanks via a remote BT controller
 2.  **Physical Interaction:** Tanks fire IR beams at each other or drive over RFID tags on the floor.
 3.  **Data Sync:** The tank reports the hit or the tag ID to the server.
 4.  **Digital Impact:** The server calculates the result (e.g., "Tank 1 is hit: Reduce HP by 10") and sends a command back to the hardware (e.g., "Limit motor output to 50%").
@@ -66,9 +66,18 @@ The server-side logic allows for flexible game modes:
 And this will produce a flow chart:
 
 ```mermaid
-graph LR
-A[Tank] --> WiFi--> B((MQTT))--> D{Server}
-D-->B-->WiFi-->A
+flowchart LR
+ subgraph s1["Tank"]
+        A["Raspberry"]
+        n1["MegaPI"]
+  end
+    WiFi["WiFi"] --> B(("MQTT<br>/ Websocket")) & s1
+    B --> D{"Server"} & WiFi
+    D --> B
+    s1 --> WiFi & n1
+    A <-- UART --> n1
+
+    A@{ shape: rect}
 ```
 
 ---
