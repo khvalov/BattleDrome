@@ -25,8 +25,8 @@ Building Components
 4x Motor coupling
 
 #Additional components: 
-- Arduino nano
-- Harnes for connecting Arduino. See below on 
+- raspberry zero
+- Harnes for connecting raspberry zero. See below on 
 
 # Assembling: 
 Wire DC motors, bluetooth. 
