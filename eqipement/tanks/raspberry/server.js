@@ -1,4 +1,5 @@
 const { execSync } = require('child_process');
+const os = require('os');
 const { SerialPort } = require('serialport');
 const { ReadlineParser } = require('@serialport/parser-readline');
 const http = require('http');
@@ -9,8 +10,9 @@ const serial = new SerialPort({ path: '/dev/ttyS0', baudRate: 115200 });
 const parser = serial.pipe(new ReadlineParser({ delimiter: '\r\n' }));
 
 // ── MQTT ───────────────────────────────────────────────────────────────────────
+const TANK_ID = os.hostname();
 const mqttClient = mqtt.connect('mqtt://broker.hivemq.com:1883');
-const MQTT_TOPIC = 'battledrome/events';
+const MQTT_TOPIC = `battledrome/tanks/${TANK_ID}/events`;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function isWifiConnected() {
