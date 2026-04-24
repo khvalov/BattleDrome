@@ -1,116 +1,86 @@
-# JSON-Driven Interaction Specification
+# JSON Interaction Specification
 
-## Overview
+All hardware communication — Arduino ↔ Raspberry Pi (UART) and Raspberry Pi ↔ Server (MQTT) — uses newline-delimited JSON (`\r\n`).
 
-This document describes a simple JSON-based event format used to drive
-system interactions. Each JSON message represents a single event that
-can either trigger a system action or report an error.
-
-------------------------------------------------------------------------
+---
 
 ## Message Structure
 
-Each message follows this structure:
+```json
+{ "timestamp": 1234567890, "event": { "type": "<type>", ... } }
+```
 
-``` json
+### `timestamp`
+Unix epoch in seconds (`Math.floor(Date.now() / 1000)` / `millis() / 1000`).
+
+---
+
+## Event Types
+
+### `system`
+Generic system lifecycle event. Used for connection announcements and heartbeats.
+
+```json
+{ "timestamp": 1234567890, "event": { "type": "system", "action": "connected", "value": 1 } }
+{ "timestamp": 1234567890, "event": { "type": "system", "action": "heartbeat", "value": 1 } }
+```
+
+### `error`
+Failure report. No `action` or `value` required.
+
+```json
+{ "timestamp": 1234567890, "event": { "type": "error" } }
+```
+
+### `telemetry`  _(tank → server, every 500 ms)_
+Snapshot of the tank's current physical and game state.
+
+```json
 {
-  "timestamp": 123456,
+  "timestamp": 1234567890,
   "event": {
-    "type": "system",
-    "action": "speed",
-    "value": -10
+    "type": "telemetry",
+    "data": {
+      "speed":     127,
+      "health":    100,
+      "ammo":      100,
+      "ammoLevel": 3,
+      "fireSpeed": 5,
+      "immunable": false
+    }
   }
 }
 ```
 
-------------------------------------------------------------------------
+| Field | Type | Range | Description |
+|---|---|---|---|
+| `speed` | int | 0–255 | Average absolute PWM across all 4 motors |
+| `health` | int | 0–100 | Tank HP |
+| `ammo` | int | 0–100 | Remaining ammunition |
+| `ammoLevel` | int | 1–10 | Ammo power level |
+| `fireSpeed` | int | 1–10 | Fire rate level |
+| `immunable` | bool | — | Whether the tank is currently immune to damage |
 
-## Fields Description
+### `command`  _(server → tank, via MQTT commands topic)_
+Updates a single game-state variable on the Arduino. The Raspberry Pi forwards this to Arduino via UART.
 
-### `timestamp`
+```json
+{ "timestamp": 0, "event": { "type": "command", "param": "health", "value": 80 } }
+```
 
--   **Type:** Number (integer)
--   **Description:**\
-    Represents the time when the event was generated.\
-    Typically expressed as a Unix timestamp or another agreed-upon time
-    format.
+| `param` | Type | Range |
+|---|---|---|
+| `health` | int | 0–100 |
+| `ammo` | int | 0–100 |
+| `ammoLevel` | int | 1–10 |
+| `fireSpeed` | int | 1–10 |
+| `immunable` | int | 0 = false, 1 = true |
 
-------------------------------------------------------------------------
+---
 
-### `event`
+## MQTT Topics
 
--   **Type:** Object\
--   **Description:**\
-    Contains the core event details.
-
-#### `event.type`
-
--   **Type:** String\
--   **Allowed values:**
-    -   `system`
-    -   `error`
--   **Description:**\
-    Defines the nature of the event:
-    -   `system` → triggers an action in the system
-    -   `error` → indicates a failure or issue
-
-------------------------------------------------------------------------
-
-#### `event.action`
-
--   **Type:** String\
--   **Required when:** `event.type = "system"`\
--   **Description:**\
-    Specifies the action that the system should execute.
-
-------------------------------------------------------------------------
-
-#### `event.value`
-
--   **Type:** Number (or depends on action)\
--   **Required when:** `event.type = "system"`\
--   **Description:**\
-    Provides the value associated with the action.
-
-------------------------------------------------------------------------
-
-## Event Types Behavior
-
-### 1. System Event
-
-When `event.type = "system"`: - The system **must execute** the
-specified `action` - The `value` is passed as a parameter to that action
-
-------------------------------------------------------------------------
-
-### 2. Error Event
-
-When `event.type = "error"`: - No system action is executed - The event
-represents a failure or issue
-
-------------------------------------------------------------------------
-
-## Validation Rules
-
--   `timestamp` must be present and valid
--   `event.type` must be either `system` or `error`
--   If `event.type = "system"`:
-    -   `action` is required
-    -   `value` is required
--   If `event.type = "error"`:
-    -   `action` and `value` are optional
-
-------------------------------------------------------------------------
-
-## Extensibility
-
-The format can be extended with additional fields if needed.
-
-------------------------------------------------------------------------
-
-## Summary
-
--   JSON messages represent discrete events
--   `system` events trigger actions
--   `error` events report issues
--   The structure is simple and extensible
+| Topic | Direction | Content |
+|---|---|---|
+| `battledrome/tanks/{hostname}/events` | tank → server | `system`, `error`, `telemetry` |
+| `battledrome/tanks/{hostname}/commands` | server → tank | `command` |

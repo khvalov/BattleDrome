@@ -12,7 +12,8 @@ const parser = serial.pipe(new ReadlineParser({ delimiter: '\r\n' }));
 // ── MQTT ───────────────────────────────────────────────────────────────────────
 const TANK_ID = os.hostname();
 const mqttClient = mqtt.connect('mqtt://broker.hivemq.com:1883');
-const MQTT_TOPIC = `battledrome/tanks/${TANK_ID}/events`;
+const MQTT_TOPIC    = `battledrome/tanks/${TANK_ID}/events`;
+const COMMAND_TOPIC = `battledrome/tanks/${TANK_ID}/commands`;
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 function isWifiConnected() {
@@ -56,19 +57,46 @@ function broadcast(payload) {
   publishMqtt(payload);
 }
 
+// ── Heartbeat ──────────────────────────────────────────────────────────────────
+const HEARTBEAT_INTERVAL_MS = 5_000;
+let heartbeatTimer = null;
+
+function startHeartbeat() {
+  if (heartbeatTimer) return;
+  heartbeatTimer = setInterval(() => {
+    publishMqtt(buildEvent('system', 'heartbeat', 1));
+  }, HEARTBEAT_INTERVAL_MS);
+}
+
+function stopHeartbeat() {
+  clearInterval(heartbeatTimer);
+  heartbeatTimer = null;
+}
+
 // ── MQTT events ────────────────────────────────────────────────────────────────
 mqttClient.on('connect', () => {
   console.log('MQTT connected');
+  mqttClient.subscribe(COMMAND_TOPIC, { qos: 1 });
   const connected = isWifiConnected();
   const payload = connected
     ? buildEvent('system', 'connected', 1)
     : buildEvent('error');
   broadcast(payload);
+  startHeartbeat();
+});
+
+mqttClient.on('message', (topic, message) => {
+  if (topic !== COMMAND_TOPIC) return;
+  // Forward command from MQTT to Arduino via serial
+  const raw = message.toString().trim();
+  console.log('Command received, forwarding to Arduino:', raw);
+  serial.write(raw + '\r\n');
 });
 
 mqttClient.on('error', (err) => {
   console.error('MQTT error:', err.message);
   broadcast(buildEvent('error'));
+  stopHeartbeat();
 });
 
 // ── Serial incoming JSON handler ───────────────────────────────────────────────

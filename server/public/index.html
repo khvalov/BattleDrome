@@ -36,7 +36,7 @@
       font-weight: bold;
       letter-spacing: 0.05em;
     }
-    #connection-badge.connected { background: #1a3a1a; color: #3fb950; border: 1px solid #3fb950; }
+    #connection-badge.connected    { background: #1a3a1a; color: #3fb950; border: 1px solid #3fb950; }
     #connection-badge.disconnected { background: #3a1a1a; color: #f85149; border: 1px solid #f85149; }
 
     #no-tanks {
@@ -48,20 +48,22 @@
 
     #grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
       gap: 1.25rem;
     }
 
+    /* ── Card ── */
     .tank-card {
       background: #161b22;
       border: 1px solid #30363d;
       border-radius: 10px;
       padding: 1.25rem;
-      transition: border-color 0.3s;
+      transition: border-color 0.3s, opacity 0.3s;
     }
     .tank-card.online  { border-color: #3fb950; }
-    .tank-card.offline { border-color: #484f58; opacity: 0.65; }
+    .tank-card.offline { border-color: #484f58; opacity: 0.6; }
 
+    /* ── Card header ── */
     .tank-header {
       display: flex;
       align-items: center;
@@ -70,8 +72,7 @@
     }
 
     .status-dot {
-      width: 10px;
-      height: 10px;
+      width: 10px; height: 10px;
       border-radius: 50%;
       flex-shrink: 0;
     }
@@ -81,7 +82,6 @@
     .tank-name {
       font-size: 1rem;
       font-weight: bold;
-      color: #e6edf3;
       flex: 1;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -97,30 +97,88 @@
     .offline .tank-status-label { color: #8b949e; }
 
     .tank-meta {
-      font-size: 0.75rem;
-      color: #8b949e;
-      margin-bottom: 0.75rem;
-    }
-
-    .event-box {
-      background: #0d1117;
-      border: 1px solid #21262d;
-      border-radius: 6px;
-      padding: 0.6rem 0.75rem;
       font-size: 0.72rem;
       color: #8b949e;
-      max-height: 90px;
-      overflow: hidden;
-      white-space: pre;
+      margin-bottom: 0.9rem;
     }
-    .event-box.has-event { color: #c9d1d9; }
 
-    .pulse {
-      animation: pulse 0.4s ease-out;
+    /* ── Telemetry ── */
+    .telemetry {
+      display: flex;
+      flex-direction: column;
+      gap: 0.55rem;
     }
+
+    .stat-row {
+      display: grid;
+      grid-template-columns: 72px 1fr 36px;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .stat-label {
+      font-size: 0.68rem;
+      color: #8b949e;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .bar-track {
+      height: 6px;
+      background: #21262d;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.4s ease, background 0.4s ease;
+    }
+
+    /* colour per stat */
+    .bar-speed     { background: #58a6ff; }
+    .bar-health    { background: #3fb950; }
+    .bar-ammo      { background: #e3b341; }
+    .bar-ammoLevel { background: #d29922; }
+    .bar-fireSpeed { background: #f78166; }
+
+    .stat-value {
+      font-size: 0.72rem;
+      color: #c9d1d9;
+      text-align: right;
+    }
+
+    /* immune badge */
+    .immune-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-top: 0.2rem;
+    }
+
+    .immune-badge {
+      font-size: 0.65rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: bold;
+    }
+    .immune-on  { background: #1f3d2e; color: #3fb950; border: 1px solid #3fb950; }
+    .immune-off { background: #1c1c1c; color: #484f58; border: 1px solid #30363d; }
+
+    .no-telemetry {
+      font-size: 0.72rem;
+      color: #484f58;
+      font-style: italic;
+    }
+
+    /* pulse on reconnect */
+    .pulse { animation: pulse 0.4s ease-out; }
     @keyframes pulse {
       0%   { box-shadow: 0 0 0 0 rgba(63,185,80,0.5); }
-      100% { box-shadow: 0 0 0 12px rgba(63,185,80,0); }
+      100% { box-shadow: 0 0 0 14px rgba(63,185,80,0); }
     }
   </style>
 </head>
@@ -135,26 +193,16 @@
 <div id="grid"></div>
 
 <script>
-  const grid = document.getElementById('grid');
+  const grid   = document.getElementById('grid');
   const noTanks = document.getElementById('no-tanks');
-  const badge = document.getElementById('connection-badge');
+  const badge  = document.getElementById('connection-badge');
 
   let ws;
 
   function connect() {
     ws = new WebSocket(`ws://${location.host}`);
-
-    ws.onopen = () => {
-      badge.textContent = 'CONNECTED';
-      badge.className = 'connected';
-    };
-
-    ws.onclose = () => {
-      badge.textContent = 'DISCONNECTED';
-      badge.className = 'disconnected';
-      setTimeout(connect, 3000);
-    };
-
+    ws.onopen  = () => { badge.textContent = 'CONNECTED';    badge.className = 'connected'; };
+    ws.onclose = () => { badge.textContent = 'DISCONNECTED'; badge.className = 'disconnected'; setTimeout(connect, 3000); };
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
       if (msg.type === 'update') renderTanks(msg.tanks);
@@ -168,48 +216,75 @@
     return `${Math.floor(s / 60)}m ${s % 60}s ago`;
   }
 
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function barHtml(label, cssClass, value, max) {
+    const pct = Math.round(Math.min(100, Math.max(0, (value / max) * 100)));
+    return `
+      <div class="stat-row">
+        <span class="stat-label">${label}</span>
+        <div class="bar-track"><div class="bar-fill ${cssClass}" style="width:${pct}%"></div></div>
+        <span class="stat-value">${value}</span>
+      </div>`;
+  }
+
+  function telemetryHtml(t) {
+    if (!t) return '<div class="no-telemetry">No telemetry yet</div>';
+    const speed     = t.speed     ?? '—';
+    const health    = t.health    ?? '—';
+    const ammo      = t.ammo      ?? '—';
+    const ammoLevel = t.ammoLevel ?? '—';
+    const fireSpeed = t.fireSpeed ?? '—';
+    const immunable = t.immunable ?? false;
+
+    const bars = `
+      ${barHtml('Speed',      'bar-speed',     speed     === '—' ? 0 : speed,     255)}
+      ${barHtml('Health',     'bar-health',    health    === '—' ? 0 : health,    100)}
+      ${barHtml('Ammo',       'bar-ammo',      ammo      === '—' ? 0 : ammo,      100)}
+      ${barHtml('Ammo Lv',    'bar-ammoLevel', ammoLevel === '—' ? 0 : ammoLevel, 10)}
+      ${barHtml('Fire Spd',   'bar-fireSpeed', fireSpeed === '—' ? 0 : fireSpeed, 10)}
+    `;
+    const immuneBadge = `
+      <div class="immune-row">
+        <span class="stat-label">Immune</span>
+        <span class="immune-badge ${immunable ? 'immune-on' : 'immune-off'}">${immunable ? 'YES' : 'NO'}</span>
+      </div>`;
+    return bars + immuneBadge;
+  }
+
   function renderTanks(tanks) {
     noTanks.style.display = tanks.length ? 'none' : 'block';
 
     const seen = new Set(tanks.map(t => t.id));
-
-    // Remove cards for tanks that disappeared
     for (const card of grid.querySelectorAll('.tank-card')) {
       if (!seen.has(card.dataset.id)) card.remove();
     }
 
     for (const tank of tanks) {
-      let card = grid.querySelector(`.tank-card[data-id="${tank.id}"]`);
-      const isNew = !card;
+      let card = grid.querySelector(`.tank-card[data-id="${escHtml(tank.id)}"]`);
+      const wasOnline = card && card.classList.contains('online');
 
-      if (isNew) {
+      if (!card) {
         card = document.createElement('div');
         card.className = 'tank-card';
         card.dataset.id = tank.id;
-        card.innerHTML = `
-          <div class="tank-header">
-            <div class="status-dot"></div>
-            <span class="tank-name">${escHtml(tank.id)}</span>
-            <span class="tank-status-label"></span>
-          </div>
-          <div class="tank-meta"></div>
-          <div class="event-box">No events yet</div>
-        `;
         grid.appendChild(card);
       }
 
-      const wasOnline = card.classList.contains('online');
       card.className = `tank-card ${tank.online ? 'online' : 'offline'}`;
+      if (tank.lastSeen) card.dataset.lastSeen = tank.lastSeen;
 
-      card.querySelector('.tank-status-label').textContent = tank.online ? 'ONLINE' : 'OFFLINE';
-      card.querySelector('.tank-meta').textContent =
-        tank.lastSeen ? `Last seen: ${timeSince(tank.lastSeen)}` : '';
-
-      const eventBox = card.querySelector('.event-box');
-      if (tank.lastEvent) {
-        eventBox.textContent = JSON.stringify(tank.lastEvent, null, 2);
-        eventBox.classList.add('has-event');
-      }
+      card.innerHTML = `
+        <div class="tank-header">
+          <div class="status-dot"></div>
+          <span class="tank-name">${escHtml(tank.id)}</span>
+          <span class="tank-status-label">${tank.online ? 'ONLINE' : 'OFFLINE'}</span>
+        </div>
+        <div class="tank-meta">${tank.lastSeen ? `Last seen: ${timeSince(tank.lastSeen)}` : ''}</div>
+        <div class="telemetry">${telemetryHtml(tank.telemetry)}</div>
+      `;
 
       if (!wasOnline && tank.online) {
         card.classList.add('pulse');
@@ -218,32 +293,13 @@
     }
   }
 
-  // Refresh "last seen" timestamps every 5s without a server round-trip
+  // Refresh "last seen" without a server round-trip
   setInterval(() => {
-    for (const card of grid.querySelectorAll('.tank-card')) {
+    for (const card of grid.querySelectorAll('.tank-card[data-last-seen]')) {
       const meta = card.querySelector('.tank-meta');
-      const lastSeenText = meta.textContent;
-      if (lastSeenText) {
-        // Re-render just the meta from a stored attribute
-        const ts = card.dataset.lastSeen;
-        if (ts) meta.textContent = `Last seen: ${timeSince(Number(ts))}`;
-      }
+      if (meta) meta.textContent = `Last seen: ${timeSince(Number(card.dataset.lastSeen))}`;
     }
   }, 5000);
-
-  function escHtml(s) {
-    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-  }
-
-  // Patch renderTanks to also store lastSeen on the card element
-  const _renderTanks = renderTanks;
-  renderTanks = function(tanks) {
-    _renderTanks(tanks);
-    for (const tank of tanks) {
-      const card = grid.querySelector(`.tank-card[data-id="${tank.id}"]`);
-      if (card && tank.lastSeen) card.dataset.lastSeen = tank.lastSeen;
-    }
-  };
 
   connect();
 </script>
