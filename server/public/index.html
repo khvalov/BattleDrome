@@ -180,6 +180,89 @@
       0%   { box-shadow: 0 0 0 0 rgba(63,185,80,0.5); }
       100% { box-shadow: 0 0 0 14px rgba(63,185,80,0); }
     }
+
+    /* ── Telemetry log ── */
+    #log-section {
+      margin-top: 2.5rem;
+    }
+
+    #log-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 0.75rem;
+    }
+
+    #log-header h2 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #8b949e;
+    }
+
+    #log-count {
+      font-size: 0.7rem;
+      color: #484f58;
+    }
+
+    #log-clear {
+      margin-left: auto;
+      background: none;
+      border: 1px solid #30363d;
+      color: #8b949e;
+      border-radius: 4px;
+      padding: 0.2rem 0.65rem;
+      font-size: 0.7rem;
+      cursor: pointer;
+      font-family: inherit;
+      letter-spacing: 0.05em;
+    }
+    #log-clear:hover { border-color: #8b949e; color: #e6edf3; }
+
+    #log-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      max-height: 480px;
+      overflow-y: auto;
+    }
+
+    .log-entry {
+      background: #0d1117;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.68rem;
+      animation: fadeIn 0.2s ease;
+    }
+    .log-entry.type-fire      { border-left: 3px solid #f78166; }
+    .log-entry.type-telemetry { border-left: 3px solid #58a6ff; }
+    .log-entry.type-system    { border-left: 3px solid #3fb950; }
+    .log-entry.type-error     { border-left: 3px solid #f85149; }
+
+    .log-meta {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 0.3rem;
+      color: #484f58;
+    }
+    .log-meta .log-tank { color: #8b949e; }
+    .log-meta .log-type { text-transform: uppercase; letter-spacing: 0.06em; }
+    .log-meta .log-type.type-fire      { color: #f78166; }
+    .log-meta .log-type.type-telemetry { color: #58a6ff; }
+    .log-meta .log-type.type-system    { color: #3fb950; }
+    .log-meta .log-type.type-error     { color: #f85149; }
+
+    .log-json {
+      color: #8b949e;
+      white-space: pre;
+      overflow-x: auto;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
   </style>
 </head>
 <body>
@@ -191,6 +274,15 @@
 
 <div id="no-tanks">Waiting for tanks to come online&hellip;</div>
 <div id="grid"></div>
+
+<div id="log-section">
+  <div id="log-header">
+    <h2>Telemetry Log</h2>
+    <span id="log-count">0 entries</span>
+    <button id="log-clear">Clear</button>
+  </div>
+  <div id="log-list"></div>
+</div>
 
 <script>
   const grid   = document.getElementById('grid');
@@ -206,6 +298,7 @@
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
       if (msg.type === 'update') renderTanks(msg.tanks);
+      if (msg.type === 'log')    appendLog(msg);
     };
   }
 
@@ -300,6 +393,43 @@
       if (meta) meta.textContent = `Last seen: ${timeSince(Number(card.dataset.lastSeen))}`;
     }
   }, 5000);
+
+  // ── Telemetry log ────────────────────────────────────────────────────────────
+  const logList  = document.getElementById('log-list');
+  const logCount = document.getElementById('log-count');
+  const logClear = document.getElementById('log-clear');
+  const MAX_LOG  = 100;
+
+  logClear.addEventListener('click', () => {
+    logList.innerHTML = '';
+    logCount.textContent = '0 entries';
+  });
+
+  function appendLog({ tankId, receivedAt, payload }) {
+    const eventType = payload?.event?.type || 'unknown';
+    const ts = new Date(receivedAt).toISOString().replace('T', ' ').slice(0, -1) + 'Z';
+
+    const entry = document.createElement('div');
+    entry.className = `log-entry type-${eventType}`;
+    entry.innerHTML = `
+      <div class="log-meta">
+        <span class="log-tank">${escHtml(tankId)}</span>
+        <span class="log-type type-${eventType}">${escHtml(eventType)}</span>
+        <span>${escHtml(ts)}</span>
+      </div>
+      <pre class="log-json">${escHtml(JSON.stringify(payload, null, 2))}</pre>
+    `;
+
+    logList.insertBefore(entry, logList.firstChild);
+
+    // Trim to MAX_LOG entries
+    while (logList.children.length > MAX_LOG) {
+      logList.removeChild(logList.lastChild);
+    }
+
+    const n = logList.children.length;
+    logCount.textContent = `${n} entr${n === 1 ? 'y' : 'ies'}`;
+  }
 
   connect();
 </script>

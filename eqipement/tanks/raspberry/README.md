@@ -1,6 +1,6 @@
 # Raspberry Pi Zero — Tank Bridge
 
-The Raspberry Pi Zero acts as the network bridge between the MegaPi Arduino (UART) and the MQTT broker. It also runs a heartbeat and handles WiFi provisioning.
+The Raspberry Pi Zero bridges the MegaPi Arduino (UART `Serial2`) and the MQTT broker. It forwards telemetry upstream and commands downstream, and keeps the tank visible on the dashboard via a periodic heartbeat.
 
 ---
 
@@ -19,7 +19,6 @@ Install [wifi-connect](https://github.com/balena-os/wifi-connect) so the Pi can 
 **Step 3 — Deploy server.js**
 
 ```bash
-# Clone or copy server.js to /home/pi/
 cd /home/pi
 npm install serialport @serialport/parser-readline mqtt
 ```
@@ -55,18 +54,21 @@ sudo systemctl start iot-app.service
 
 ## What server.js does
 
-- Opens `/dev/ttyS0` at 115200 baud (UART to MegaPi via flex cable)
-- Connects to `broker.hivemq.com:1883` and publishes to `battledrome/tanks/{hostname}/events`
-- Subscribes to `battledrome/tanks/{hostname}/commands` and forwards any received message to Arduino via UART
-- Sends a `heartbeat` event every **5 seconds** so the central server knows the tank is alive
-- Exposes an HTTP health endpoint on port **3000** (`GET /` → `200 OK`)
-- On WiFi loss at startup, launches `wifi-connect --portal-ssid "MyDevice-Setup"`
+| Behaviour | Detail |
+|:---|:---|
+| Serial port | `/dev/ttyS0` at 115200 baud (UART to MegaPi `Serial2`) |
+| Tank identity | Uses `os.hostname()` as the routing key in MQTT topics (stored as `TANK_ID`) |
+| Publishes to | `battledrome/tanks/{hostname}/events` (`telemetry`, `fire`, `system`, `error`) |
+| Subscribes to | `battledrome/tanks/{hostname}/commands` |
+| Telemetry enrichment | Before forwarding `telemetry` or `fire` events to MQTT, injects `ip` (first non-loopback IPv4) and `hostname` (`os.hostname()`) into `event.data` |
+| Command forwarding | Any message received on the commands topic is written verbatim to Arduino via UART |
+| Heartbeat | `system / heartbeat` published every **5 s** so the central server doesn't mark the tank offline |
+| WiFi fallback | If no WiFi at startup, launches `wifi-connect --portal-ssid "MyDevice-Setup"` |
+| Health endpoint | `GET http://<pi>:3000/` → `200 OK` |
 
 ---
 
 ## Sending commands to the tank
-
-Any MQTT client can publish to the commands topic to update a game-state variable on the Arduino:
 
 ```bash
 mosquitto_pub -h broker.hivemq.com \
@@ -74,4 +76,5 @@ mosquitto_pub -h broker.hivemq.com \
   -m '{"timestamp":0,"event":{"type":"command","param":"health","value":80}}'
 ```
 
-See `eqipement/README.md` for the full command spec.
+Valid `param` values: `health`, `ammo`, `ammoLevel`, `fireSpeed`, `immunable`.  
+See `eqipement/README.md` for the full message spec.
