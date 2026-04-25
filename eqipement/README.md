@@ -10,30 +10,25 @@ All hardware communication — Arduino ↔ Raspberry Pi (UART) and Raspberry Pi 
 { "timestamp": 1234567890, "event": { "type": "<type>", ... } }
 ```
 
-### `timestamp`
-Unix epoch in seconds (`Math.floor(Date.now() / 1000)` / `millis() / 1000`).
+`timestamp` — Unix epoch in seconds (`millis() / 1000` on Arduino, `Math.floor(Date.now() / 1000)` on Node.js).
 
 ---
 
 ## Event Types
 
-### `system`
-Generic system lifecycle event. Used for connection announcements and heartbeats.
-
+### `system` — lifecycle events
 ```json
-{ "timestamp": 1234567890, "event": { "type": "system", "action": "connected", "value": 1 } }
-{ "timestamp": 1234567890, "event": { "type": "system", "action": "heartbeat", "value": 1 } }
+{ "timestamp": 1234567890, "event": { "type": "system", "action": "connected",  "value": 1 } }
+{ "timestamp": 1234567890, "event": { "type": "system", "action": "heartbeat",  "value": 1 } }
 ```
 
-### `error`
-Failure report. No `action` or `value` required.
-
+### `error` — failure report
 ```json
 { "timestamp": 1234567890, "event": { "type": "error" } }
 ```
 
-### `telemetry`  _(tank → server, every 500 ms)_
-Snapshot of the tank's current physical and game state.
+### `telemetry` — tank → server, every 500 ms
+Full snapshot of physical and game state, emitted by the Arduino and enriched by the Raspberry Pi (adds `ip`, `hostname`) before publishing to MQTT.
 
 ```json
 {
@@ -41,9 +36,13 @@ Snapshot of the tank's current physical and game state.
   "event": {
     "type": "telemetry",
     "data": {
+      "tankId":    "WHLYA1",
+      "tankType":  "wheely",
+      "ip":        "192.168.1.42",
+      "hostname":  "wheely-pi",
       "speed":     127,
       "health":    100,
-      "ammo":      100,
+      "ammo":      99,
       "ammoLevel": 3,
       "fireSpeed": 5,
       "immunable": false
@@ -52,35 +51,66 @@ Snapshot of the tank's current physical and game state.
 }
 ```
 
-| Field | Type | Range | Description |
-|---|---|---|---|
-| `speed` | int | 0–255 | Average absolute PWM across all 4 motors |
-| `health` | int | 0–100 | Tank HP |
-| `ammo` | int | 0–100 | Remaining ammunition |
-| `ammoLevel` | int | 1–10 | Ammo power level |
-| `fireSpeed` | int | 1–10 | Fire rate level |
-| `immunable` | bool | — | Whether the tank is currently immune to damage |
+| Field | Source | Type | Range | Description |
+|---|---|---|---|---|
+| `tankId` | Arduino | string | 6 chars | Unique tank identifier |
+| `tankType` | Arduino | string | — | Tank model (`wheely`, …) |
+| `ip` | RPi | string | — | RPi local IP address |
+| `hostname` | RPi | string | — | RPi hostname |
+| `speed` | Arduino | int | 0–255 | Average absolute PWM across all 4 motors |
+| `health` | Arduino | int | 0–100 | Tank HP |
+| `ammo` | Arduino | int | 0–100 | Remaining ammunition |
+| `ammoLevel` | Arduino | int | 1–10 | Ammo power level |
+| `fireSpeed` | Arduino | int | 1–10 | Minimum ms between shots |
+| `immunable` | Arduino | bool | — | Whether the tank is immune to damage |
 
-### `command`  _(server → tank, via MQTT commands topic)_
-Updates a single game-state variable on the Arduino. The Raspberry Pi forwards this to Arduino via UART.
+### `fire` — tank → server, on each shot
+Sent immediately when the square button fires. The central server uses this to update the ammo counter without waiting for the next 500 ms telemetry tick.
+
+```json
+{
+  "timestamp": 1234567890,
+  "event": {
+    "type": "fire",
+    "data": {
+      "tankId":    "WHLYA1",
+      "tankType":  "wheely",
+      "senderId":  "WHLYA1",
+      "ammoLevel": 3,
+      "ammo":      99,
+      "ip":        "192.168.1.42",
+      "hostname":  "wheely-pi"
+    }
+  }
+}
+```
+
+| Field | Description |
+|---|---|
+| `senderId` | Attacker's `tankId` — echoed into IR packet for damage resolution |
+| `ammoLevel` | Damage multiplier carried in the IR packet |
+| `ammo` | Remaining rounds **after** this shot |
+
+### `command` — server → tank, via MQTT commands topic
+Updates a single game-state variable on the Arduino. The Raspberry Pi subscribes to the commands topic and forwards matching messages to Arduino via UART.
 
 ```json
 { "timestamp": 0, "event": { "type": "command", "param": "health", "value": 80 } }
 ```
 
-| `param` | Type | Range |
-|---|---|---|
-| `health` | int | 0–100 |
-| `ammo` | int | 0–100 |
-| `ammoLevel` | int | 1–10 |
-| `fireSpeed` | int | 1–10 |
-| `immunable` | int | 0 = false, 1 = true |
+| `param` | Type | Range | Arduino behaviour |
+|---|---|---|---|
+| `health` | int | 0–100 | `constrain(value, 0, 100)` |
+| `ammo` | int | 0–100 | `constrain(value, 0, 100)` |
+| `ammoLevel` | int | 1–10 | `constrain(value, 1, 10)` |
+| `fireSpeed` | int | 1–10 | `constrain(value, 1, 10)` |
+| `immunable` | int | 0 / 1 | `value != 0` → bool |
 
 ---
 
 ## MQTT Topics
 
-| Topic | Direction | Content |
+| Topic | Direction | Carries |
 |---|---|---|
-| `battledrome/tanks/{hostname}/events` | tank → server | `system`, `error`, `telemetry` |
+| `battledrome/tanks/{hostname}/events` | tank → server | `system`, `error`, `telemetry`, `fire` |
 | `battledrome/tanks/{hostname}/commands` | server → tank | `command` |

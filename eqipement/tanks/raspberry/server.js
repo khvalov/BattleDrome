@@ -5,6 +5,16 @@ const { ReadlineParser } = require('@serialport/parser-readline');
 const http = require('http');
 const mqtt = require('mqtt');
 
+// ── Local IP helper ────────────────────────────────────────────────────────────
+function getLocalIP() {
+  for (const ifaces of Object.values(os.networkInterfaces())) {
+    for (const iface of ifaces) {
+      if (iface.family === 'IPv4' && !iface.internal) return iface.address;
+    }
+  }
+  return '0.0.0.0';
+}
+
 // ── Serial port ────────────────────────────────────────────────────────────────
 const serial = new SerialPort({ path: '/dev/ttyS0', baudRate: 115200 });
 const parser = serial.pipe(new ReadlineParser({ delimiter: '\r\n' }));
@@ -104,7 +114,12 @@ parser.on('data', (line) => {
   try {
     const msg = JSON.parse(line.trim());
     console.log('Serial received:', msg);
-    // Forward incoming serial events to MQTT
+    // Enrich telemetry and fire events with RPi-side meta
+    const type = msg?.event?.type;
+    if ((type === 'telemetry' || type === 'fire') && msg.event.data) {
+      msg.event.data.ip       = getLocalIP();
+      msg.event.data.hostname = TANK_ID;
+    }
     publishMqtt(msg);
   } catch (err) {
     console.error('Invalid JSON from serial:', line.trim());

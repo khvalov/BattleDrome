@@ -36,15 +36,24 @@ mqttClient.on('message', (topic, raw) => {
   let payload;
   try { payload = JSON.parse(raw.toString()); } catch { return; }
 
-  const patch = { online: true, lastSeen: Date.now(), lastEvent: payload };
+  const now = Date.now();
+  const patch = { online: true, lastSeen: now, lastEvent: payload };
+  const eventType = payload?.event?.type;
 
   // Merge telemetry data into persistent tank state
-  if (payload?.event?.type === 'telemetry' && payload.event.data) {
+  if (eventType === 'telemetry' && payload.event.data) {
     patch.telemetry = { ...((tanks[tankId] || {}).telemetry || {}), ...payload.event.data };
+  }
+
+  // Fire events update ammo count immediately without waiting for next telemetry
+  if (eventType === 'fire' && payload.event.data) {
+    const prev = (tanks[tankId] || {}).telemetry || {};
+    patch.telemetry = { ...prev, ammo: payload.event.data.ammo };
   }
 
   setTank(tankId, patch);
   broadcast({ type: 'update', tanks: snapshot() });
+  broadcast({ type: 'log', tankId, receivedAt: now, payload });
 });
 
 mqttClient.on('error', (err) => console.error('MQTT error:', err.message));
