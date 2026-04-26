@@ -1,3 +1,5 @@
+<img width="1024" height="721" alt="image" src="https://github.com/user-attachments/assets/c787c519-9e55-49c5-81ca-1b3138111e80" />
+
 # Project Wheely
 
 A high-performance Mecanum-wheel robot powered by MegaPi and Raspberry Pi.
