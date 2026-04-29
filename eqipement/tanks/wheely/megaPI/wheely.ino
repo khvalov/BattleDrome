@@ -3,10 +3,9 @@
 #include <SoftwareSerial.h>
 #include <SPI.h>
 #include <MFRC522.h>
-#include <MeMegaPi.h>
+#include <MeMegaPi.h>   // includes MeRGBLed — no extra #include needed
 #include <MePS2.h>
-#include <ArduinoJson.h>        // Library Manager: "ArduinoJson" by Benoit Blanchon
-#include <Adafruit_NeoPixel.h>  // Library Manager: "Adafruit NeoPixel" by Adafruit
+#include <ArduinoJson.h>  // Library Manager: "ArduinoJson" by Benoit Blanchon
 
 // ── Tank settings ──────────────────────────────────────────────────────────────
 const char TANK_ID[]   = "WHLYA1";   // Unique identifier, up to 6 characters
@@ -35,12 +34,10 @@ const int DEADZONE = 20;
 // ── IR blaster ─────────────────────────────────────────────────────────────────
 const int IR_TX_PIN = 3;  // ← Set to your IR LED data pin
 
-// ── WS2812 health LED ──────────────────────────────────────────────────────────
-// 2×2 matrix, DIN on pin 60 (= A6 on ATmega2560).
-// Green: health > 50  |  Yellow: 5–50  |  Red: health < 5
-const uint8_t LED_PIN   = 60;
-const uint8_t LED_COUNT = 4;
-Adafruit_NeoPixel leds(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
+// ── Health LED (MeRGBLed / WS2812, 2×2 matrix on pin A14) ────────────────────
+// MeRGBLed is bundled with MeMegaPi — no separate install needed.
+// Colour zones:  health > 50 → green | 5–50 → yellow | < 5 → red
+MeRGBLed healthLed;
 
 // ── RFID reader ────────────────────────────────────────────────────────────────
 const uint8_t RST_PIN = 30;
@@ -241,13 +238,13 @@ void handleCommand(const String& line) {
 }
 
 // ── Health LED ─────────────────────────────────────────────────────────────────
+// Uses MeRGBLed (bundled with MeMegaPi). setColor(r,g,b) sets all pixels at once.
+// index=0 in setColor(index,r,g,b) would also set all; we use the 3-arg form.
 void updateHealthLed() {
-  uint32_t colour;
-  if      (health > 50) colour = leds.Color(0,   180,   0);  // green
-  else if (health >= 5) colour = leds.Color(180, 140,   0);  // yellow
-  else                  colour = leds.Color(180,   0,   0);  // red (critical / dead)
-  leds.fill(colour);
-  leds.show();
+  if      (health > 50) healthLed.setColor(0,   180,   0);  // green
+  else if (health >= 5) healthLed.setColor(180, 140,   0);  // yellow
+  else                  healthLed.setColor(180,   0,   0);  // red (critical / dead)
+  healthLed.show();
 }
 
 // ── Setup ──────────────────────────────────────────────────────────────────────
@@ -257,9 +254,10 @@ void setup() {
   pinMode(IR_TX_PIN, OUTPUT);
   digitalWrite(IR_TX_PIN, LOW);
 
-  leds.begin();
-  leds.setBrightness(80);  // ~31% — bright enough to see, won't blind the arena
-  updateHealthLed();       // show initial health colour at boot
+  // Health LED — MeRGBLed on pin A14 (= pin 68 on ATmega2560), 4 pixels
+  healthLed.setpin(A14);
+  healthLed.setNumber(4);
+  updateHealthLed();  // show green at boot (health starts at 100)
 
   SPI.begin();
   rfid.PCD_Init();
