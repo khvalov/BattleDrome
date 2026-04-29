@@ -28,11 +28,13 @@ const RFID_ACTIONS = {
 
 // Map user-facing action names to Arduino command params
 const ACTION_PARAM = {
-  ammo:   'ammo',
-  health: 'health',
-  speed:  'fireSpeed',
-  immune: 'immunable',
-  win:    null,  // handled separately
+  ammo:     'ammo',
+  health:   'health',
+  speed:    'fireSpeed',
+  immune:   'immunable',
+  maxspeed: 'maxSpeed',
+  minspeed: 'minSpeed',
+  win:      null,  // handled separately
 };
 
 // Valid ranges for each param (used for delta clamping)
@@ -41,9 +43,11 @@ const PARAM_RANGE = {
   health:    [0, 100],
   fireSpeed: [1, 10],
   immunable: [0, 1],
+  maxSpeed:  [1, 255],
+  minSpeed:  [0, 255],
 };
 
-const VALID_ACTIONS    = ['ammo', 'health', 'speed', 'immune', 'win'];
+const VALID_ACTIONS    = ['ammo', 'health', 'speed', 'immune', 'maxspeed', 'minspeed', 'win'];
 const VALID_RECIPIENTS = ['tank', 'others', 'teammate', 'all'];
 
 // ── Tank state ─────────────────────────────────────────────────────────────────

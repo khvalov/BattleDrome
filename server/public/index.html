@@ -126,6 +126,8 @@
     .bar-ammo      { background: #e3b341; }
     .bar-ammoLevel { background: #d29922; }
     .bar-fireSpeed { background: #f78166; }
+    .bar-maxSpeed  { background: #39c5cf; }
+    .bar-minSpeed  { background: #1b6a70; }
 
     .stat-value { font-size: 0.72rem; color: #c9d1d9; text-align: right; }
 
@@ -222,11 +224,13 @@
       letter-spacing: 0.05em;
       font-weight: bold;
     }
-    .action-ammo   { background:#2d2a0f; color:#e3b341; border:1px solid #e3b34144; }
-    .action-health { background:#0f2d15; color:#3fb950; border:1px solid #3fb95044; }
-    .action-speed  { background:#0f1e2d; color:#58a6ff; border:1px solid #58a6ff44; }
-    .action-immune { background:#1c1533; color:#a371f7; border:1px solid #a371f744; }
-    .action-win    { background:#2d1a0f; color:#f0883e; border:1px solid #f0883e44; }
+    .action-ammo     { background:#2d2a0f; color:#e3b341; border:1px solid #e3b34144; }
+    .action-health   { background:#0f2d15; color:#3fb950; border:1px solid #3fb95044; }
+    .action-speed    { background:#0f1e2d; color:#58a6ff; border:1px solid #58a6ff44; }
+    .action-immune   { background:#1c1533; color:#a371f7; border:1px solid #a371f744; }
+    .action-maxspeed { background:#0d2226; color:#39c5cf; border:1px solid #39c5cf44; }
+    .action-minspeed { background:#091415; color:#1b9ea8; border:1px solid #1b9ea844; }
+    .action-win      { background:#2d1a0f; color:#f0883e; border:1px solid #f0883e44; }
 
     .recipient-badge {
       display: inline-block;
@@ -404,8 +408,10 @@
         <select id="form-action">
           <option value="health">Health</option>
           <option value="ammo">Ammo</option>
-          <option value="speed">Speed</option>
+          <option value="speed">Fire Speed</option>
           <option value="immune">Immune</option>
+          <option value="maxspeed">Max Speed</option>
+          <option value="minspeed">Min Speed</option>
           <option value="win">Win</option>
         </select>
       </div>
@@ -499,12 +505,18 @@
     const ammoLevel = t.ammoLevel ?? '—';
     const fireSpeed = t.fireSpeed ?? '—';
     const immunable = t.immunable ?? false;
+    const maxSpeed  = t.maxSpeed  ?? 160;
+    const minSpeed  = t.minSpeed  ?? '—';
+    // Speed bar is capped at the current maxSpeed limit
+    const speedMax  = t.maxSpeed  ?? 255;
     const bars = `
-      ${barHtml('Speed',    'bar-speed',     speed     === '—' ? 0 : speed,     255)}
+      ${barHtml('Speed',    'bar-speed',     speed     === '—' ? 0 : speed,     speedMax)}
       ${barHtml('Health',   'bar-health',    health    === '—' ? 0 : health,    100)}
       ${barHtml('Ammo',     'bar-ammo',      ammo      === '—' ? 0 : ammo,      100)}
       ${barHtml('Ammo Lv',  'bar-ammoLevel', ammoLevel === '—' ? 0 : ammoLevel, 10)}
       ${barHtml('Fire Spd', 'bar-fireSpeed', fireSpeed === '—' ? 0 : fireSpeed, 10)}
+      ${barHtml('Max Spd',  'bar-maxSpeed',  maxSpeed,                          255)}
+      ${barHtml('Min Spd',  'bar-minSpeed',  minSpeed  === '—' ? 0 : minSpeed,  255)}
     `;
     return bars + `
       <div class="immune-row">

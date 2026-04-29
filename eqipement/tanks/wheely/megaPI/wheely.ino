@@ -27,8 +27,9 @@ const int SIGN_FR = -1;
 const int SIGN_RL = -1;
 const int SIGN_RR = +1;
 
-const int MAX_SPEED = 255;
-const int DEADZONE  = 20;
+int maxSpeed = 160;  // max PWM — overridable via RFID/command
+int minSpeed = 20;   // minimum PWM when moving — overridable via RFID/command
+const int DEADZONE = 20;
 
 // ── IR blaster ─────────────────────────────────────────────────────────────────
 const int IR_TX_PIN = 3;  // ← Set to your IR LED data pin
@@ -73,19 +74,34 @@ float applyDeadzone(float v) {
   return (abs(v) < DEADZONE) ? 0 : v;
 }
 
+// Enforce minSpeed floor: if the motor is asked to move at all,
+// ensure its absolute PWM is at least minSpeed.
+float applyMinSpd(float v) {
+  if (v >  0.5f) return max(v, (float)minSpeed);
+  if (v < -0.5f) return min(v, -(float)minSpeed);
+  return 0;
+}
+
 void mecanumDrive(float lx, float ly, float rx) {
   float frontLeft  = ly +  lx +  rx;
   float frontRight = ly + -lx + -rx;
   float rearLeft   = ly + -lx +  rx;
   float rearRight  = ly +  lx + -rx;
 
+  // Scale down to maxSpeed
   float maxVal = max(max(abs(frontLeft), abs(frontRight)),
                      max(abs(rearLeft),  abs(rearRight)));
-  if (maxVal > MAX_SPEED) {
-    float scale = MAX_SPEED / maxVal;
+  if (maxVal > maxSpeed) {
+    float scale = (float)maxSpeed / maxVal;
     frontLeft  *= scale; frontRight *= scale;
     rearLeft   *= scale; rearRight  *= scale;
   }
+
+  // Raise up to minSpeed (only for non-zero wheels)
+  frontLeft  = applyMinSpd(frontLeft);
+  frontRight = applyMinSpd(frontRight);
+  rearLeft   = applyMinSpd(rearLeft);
+  rearRight  = applyMinSpd(rearRight);
 
   portFL.run(SIGN_FL * frontLeft);
   portFR.run(SIGN_FR * frontRight);
@@ -150,7 +166,7 @@ void sendRfidEvent(const String& uid) {
 void sendTelemetry() {
   int avgSpeed = (int)((speedFL + speedFR + speedRL + speedRR) / 4.0f);
 
-  StaticJsonDocument<300> doc;
+  StaticJsonDocument<384> doc;
   doc["timestamp"] = millis() / 1000;
   JsonObject event = doc.createNestedObject("event");
   event["type"] = "telemetry";
@@ -163,6 +179,8 @@ void sendTelemetry() {
   data["ammoLevel"] = ammoLevel;
   data["fireSpeed"] = fireSpeed;
   data["immunable"] = immunable;
+  data["maxSpeed"]  = maxSpeed;
+  data["minSpeed"]  = minSpeed;
 
   serializeJson(doc, Serial2);
   Serial2.print("\r\n");
@@ -207,6 +225,8 @@ void handleCommand(const String& line) {
   else if (strcmp(param, "ammoLevel") == 0) ammoLevel = constrain(value, 1, 10);
   else if (strcmp(param, "fireSpeed") == 0) fireSpeed = constrain(value, 1, 10);
   else if (strcmp(param, "immunable") == 0) immunable = (value != 0);
+  else if (strcmp(param, "maxSpeed")  == 0) maxSpeed  = constrain(value, 1, 255);
+  else if (strcmp(param, "minSpeed")  == 0) minSpeed  = constrain(value, 0, 255);
 
   Serial.print("[CMD] "); Serial.print(param);
   Serial.print(" = "); Serial.println(value);
