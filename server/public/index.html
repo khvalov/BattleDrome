@@ -63,7 +63,6 @@
     .tank-card.online  { border-color: #3fb950; }
     .tank-card.offline { border-color: #484f58; opacity: 0.6; }
 
-    /* ── Card header ── */
     .tank-header {
       display: flex;
       align-items: center;
@@ -102,12 +101,8 @@
       margin-bottom: 0.9rem;
     }
 
-    /* ── Telemetry ── */
-    .telemetry {
-      display: flex;
-      flex-direction: column;
-      gap: 0.55rem;
-    }
+    /* ── Telemetry bars ── */
+    .telemetry { display: flex; flex-direction: column; gap: 0.55rem; }
 
     .stat-row {
       display: grid;
@@ -123,90 +118,51 @@
       letter-spacing: 0.06em;
     }
 
-    .bar-track {
-      height: 6px;
-      background: #21262d;
-      border-radius: 3px;
-      overflow: hidden;
-    }
+    .bar-track { height: 6px; background: #21262d; border-radius: 3px; overflow: hidden; }
+    .bar-fill  { height: 100%; border-radius: 3px; transition: width 0.4s ease, background 0.4s ease; }
 
-    .bar-fill {
-      height: 100%;
-      border-radius: 3px;
-      transition: width 0.4s ease, background 0.4s ease;
-    }
-
-    /* colour per stat */
     .bar-speed     { background: #58a6ff; }
     .bar-health    { background: #3fb950; }
     .bar-ammo      { background: #e3b341; }
     .bar-ammoLevel { background: #d29922; }
     .bar-fireSpeed { background: #f78166; }
 
-    .stat-value {
-      font-size: 0.72rem;
-      color: #c9d1d9;
-      text-align: right;
-    }
+    .stat-value { font-size: 0.72rem; color: #c9d1d9; text-align: right; }
 
-    /* immune badge */
-    .immune-row {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      margin-top: 0.2rem;
-    }
-
+    .immune-row { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.2rem; }
     .immune-badge {
-      font-size: 0.65rem;
-      padding: 0.15rem 0.5rem;
-      border-radius: 999px;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      font-weight: bold;
+      font-size: 0.65rem; padding: 0.15rem 0.5rem;
+      border-radius: 999px; text-transform: uppercase;
+      letter-spacing: 0.06em; font-weight: bold;
     }
     .immune-on  { background: #1f3d2e; color: #3fb950; border: 1px solid #3fb950; }
     .immune-off { background: #1c1c1c; color: #484f58; border: 1px solid #30363d; }
 
-    .no-telemetry {
-      font-size: 0.72rem;
-      color: #484f58;
-      font-style: italic;
-    }
+    .no-telemetry { font-size: 0.72rem; color: #484f58; font-style: italic; }
 
-    /* pulse on reconnect */
     .pulse { animation: pulse 0.4s ease-out; }
     @keyframes pulse {
       0%   { box-shadow: 0 0 0 0 rgba(63,185,80,0.5); }
       100% { box-shadow: 0 0 0 14px rgba(63,185,80,0); }
     }
 
-    /* ── Telemetry log ── */
-    #log-section {
-      margin-top: 2.5rem;
-    }
-
-    #log-header {
+    /* ── Shared section header ── */
+    .section { margin-top: 2.5rem; }
+    .section-header {
       display: flex;
       align-items: center;
       gap: 1rem;
       margin-bottom: 0.75rem;
     }
-
-    #log-header h2 {
+    .section-header h2 {
       font-size: 0.85rem;
       text-transform: uppercase;
       letter-spacing: 0.1em;
       color: #8b949e;
     }
+    .section-meta { font-size: 0.7rem; color: #484f58; }
 
-    #log-count {
-      font-size: 0.7rem;
-      color: #484f58;
-    }
-
-    #log-clear {
-      margin-left: auto;
+    .btn {
       background: none;
       border: 1px solid #30363d;
       color: #8b949e;
@@ -217,8 +173,129 @@
       font-family: inherit;
       letter-spacing: 0.05em;
     }
-    #log-clear:hover { border-color: #8b949e; color: #e6edf3; }
+    .btn:hover { border-color: #8b949e; color: #e6edf3; }
+    .btn.btn-primary {
+      border-color: #58a6ff; color: #58a6ff;
+    }
+    .btn.btn-primary:hover { background: #58a6ff22; }
+    .btn.btn-danger  { border-color: #f8514944; color: #f85149; }
+    .btn.btn-danger:hover  { background: #f8514922; }
+    .btn.btn-ml { margin-left: auto; }
 
+    /* ── RFID section ── */
+    #rfid-table-wrap {
+      overflow-x: auto;
+      margin-bottom: 1.25rem;
+    }
+
+    #rfid-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.75rem;
+    }
+    #rfid-table th {
+      text-align: left;
+      padding: 0.4rem 0.75rem;
+      color: #484f58;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom: 1px solid #21262d;
+    }
+    #rfid-table td {
+      padding: 0.5rem 0.75rem;
+      border-bottom: 1px solid #161b22;
+      color: #c9d1d9;
+    }
+    #rfid-table tr:hover td { background: #161b22; }
+
+    .rfid-uid   { font-family: monospace; color: #58a6ff; }
+    .rfid-value.pos { color: #3fb950; }
+    .rfid-value.neg { color: #f85149; }
+
+    .action-badge {
+      display: inline-block;
+      padding: 0.1rem 0.45rem;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: bold;
+    }
+    .action-ammo   { background:#2d2a0f; color:#e3b341; border:1px solid #e3b34144; }
+    .action-health { background:#0f2d15; color:#3fb950; border:1px solid #3fb95044; }
+    .action-speed  { background:#0f1e2d; color:#58a6ff; border:1px solid #58a6ff44; }
+    .action-immune { background:#1c1533; color:#a371f7; border:1px solid #a371f744; }
+    .action-win    { background:#2d1a0f; color:#f0883e; border:1px solid #f0883e44; }
+
+    .recipient-badge {
+      display: inline-block;
+      padding: 0.1rem 0.45rem;
+      border-radius: 4px;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      color: #8b949e;
+      border: 1px solid #30363d;
+    }
+
+    #rfid-empty {
+      padding: 1.5rem;
+      text-align: center;
+      color: #484f58;
+      font-size: 0.8rem;
+      font-style: italic;
+    }
+
+    /* ── RFID form ── */
+    #rfid-form {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+    }
+    #rfid-form h3 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #8b949e;
+      margin-bottom: 0.9rem;
+    }
+    .form-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: flex-end;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .form-group label {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #484f58;
+    }
+    .form-group input,
+    .form-group select {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      color: #e6edf3;
+      font-family: inherit;
+      font-size: 0.78rem;
+      padding: 0.3rem 0.6rem;
+      outline: none;
+      min-width: 120px;
+    }
+    .form-group input:focus,
+    .form-group select:focus { border-color: #58a6ff; }
+    #form-uid   { min-width: 140px; text-transform: uppercase; }
+    #form-value { min-width: 80px; }
+    #form-error { font-size: 0.7rem; color: #f85149; margin-top: 0.5rem; display: none; }
+
+    /* ── Telemetry log ── */
     #log-list {
       display: flex;
       flex-direction: column;
@@ -236,33 +313,49 @@
       animation: fadeIn 0.2s ease;
     }
     .log-entry.type-fire      { border-left: 3px solid #f78166; }
+    .log-entry.type-rfid      { border-left: 3px solid #f0883e; }
     .log-entry.type-telemetry { border-left: 3px solid #58a6ff; }
     .log-entry.type-system    { border-left: 3px solid #3fb950; }
     .log-entry.type-error     { border-left: 3px solid #f85149; }
 
-    .log-meta {
-      display: flex;
-      gap: 0.75rem;
-      margin-bottom: 0.3rem;
-      color: #484f58;
-    }
+    .log-meta { display: flex; gap: 0.75rem; margin-bottom: 0.3rem; color: #484f58; }
     .log-meta .log-tank { color: #8b949e; }
     .log-meta .log-type { text-transform: uppercase; letter-spacing: 0.06em; }
     .log-meta .log-type.type-fire      { color: #f78166; }
+    .log-meta .log-type.type-rfid      { color: #f0883e; }
     .log-meta .log-type.type-telemetry { color: #58a6ff; }
     .log-meta .log-type.type-system    { color: #3fb950; }
     .log-meta .log-type.type-error     { color: #f85149; }
 
-    .log-json {
-      color: #8b949e;
-      white-space: pre;
-      overflow-x: auto;
-    }
+    .log-json { color: #8b949e; white-space: pre; overflow-x: auto; }
 
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(-4px); }
       to   { opacity: 1; transform: translateY(0); }
     }
+
+    /* ── Win overlay ── */
+    #win-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.88);
+      z-index: 1000;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1.5rem;
+      text-align: center;
+    }
+    #win-overlay.show { display: flex; animation: winIn 0.4s ease; }
+    @keyframes winIn {
+      from { opacity: 0; transform: scale(0.9); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    #win-trophy  { font-size: 5rem; }
+    #win-title   { font-size: 2.5rem; font-weight: bold; color: #f0883e; letter-spacing: 0.15em; text-transform: uppercase; }
+    #win-sub     { font-size: 1rem; color: #8b949e; }
+    #win-dismiss { margin-top: 0.5rem; }
   </style>
 </head>
 <body>
@@ -275,19 +368,90 @@
 <div id="no-tanks">Waiting for tanks to come online&hellip;</div>
 <div id="grid"></div>
 
-<div id="log-section">
-  <div id="log-header">
+<!-- ── RFID Actions ─────────────────────────────────────────────────────────── -->
+<div class="section" id="rfid-section">
+  <div class="section-header">
+    <h2>&#128204; RFID Actions</h2>
+    <span class="section-meta" id="rfid-count">0 rules</span>
+  </div>
+
+  <div id="rfid-table-wrap">
+    <table id="rfid-table">
+      <thead>
+        <tr>
+          <th>UID</th>
+          <th>Action</th>
+          <th>Recipient</th>
+          <th>Value</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="rfid-tbody">
+        <tr><td colspan="5" id="rfid-empty">No RFID rules yet. Add one below.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div id="rfid-form">
+    <h3>Add / Update Rule</h3>
+    <div class="form-row">
+      <div class="form-group">
+        <label for="form-uid">UID</label>
+        <input id="form-uid" type="text" placeholder="26211603" maxlength="20" />
+      </div>
+      <div class="form-group">
+        <label for="form-action">Action</label>
+        <select id="form-action">
+          <option value="health">Health</option>
+          <option value="ammo">Ammo</option>
+          <option value="speed">Speed</option>
+          <option value="immune">Immune</option>
+          <option value="win">Win</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="form-recipient">Recipient</label>
+        <select id="form-recipient">
+          <option value="tank">Tank (self)</option>
+          <option value="others">Others</option>
+          <option value="teammate">Teammate</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+      <div class="form-group" id="form-value-group">
+        <label for="form-value">Value</label>
+        <input id="form-value" type="number" placeholder="+10 or -20" />
+      </div>
+      <div class="form-group" style="justify-content:flex-end">
+        <button class="btn btn-primary" id="rfid-save">Save Rule</button>
+      </div>
+    </div>
+    <div id="form-error"></div>
+  </div>
+</div>
+
+<!-- ── Telemetry Log ──────────────────────────────────────────────────────────── -->
+<div class="section" id="log-section">
+  <div class="section-header">
     <h2>Telemetry Log</h2>
-    <span id="log-count">0 entries</span>
-    <button id="log-clear">Clear</button>
+    <span class="section-meta" id="log-count">0 entries</span>
+    <button class="btn btn-ml" id="log-clear">Clear</button>
   </div>
   <div id="log-list"></div>
 </div>
 
+<!-- ── Win overlay ───────────────────────────────────────────────────────────── -->
+<div id="win-overlay">
+  <div id="win-trophy">&#127942;</div>
+  <div id="win-title">Victory!</div>
+  <div id="win-sub"></div>
+  <button class="btn" id="win-dismiss">Dismiss</button>
+</div>
+
 <script>
-  const grid   = document.getElementById('grid');
+  const grid    = document.getElementById('grid');
   const noTanks = document.getElementById('no-tanks');
-  const badge  = document.getElementById('connection-badge');
+  const badge   = document.getElementById('connection-badge');
 
   let ws;
 
@@ -297,11 +461,14 @@
     ws.onclose = () => { badge.textContent = 'DISCONNECTED'; badge.className = 'disconnected'; setTimeout(connect, 3000); };
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
-      if (msg.type === 'update') renderTanks(msg.tanks);
-      if (msg.type === 'log')    appendLog(msg);
+      if (msg.type === 'update')       renderTanks(msg.tanks);
+      if (msg.type === 'log')          appendLog(msg);
+      if (msg.type === 'rfid_actions') renderRfidTable(msg.actions);
+      if (msg.type === 'win')          showWin(msg);
     };
   }
 
+  // ── Helpers ──────────────────────────────────────────────────────────────────
   function timeSince(ms) {
     const s = Math.floor((Date.now() - ms) / 1000);
     if (s < 5)  return 'just now';
@@ -313,6 +480,7 @@
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
+  // ── Tank cards ───────────────────────────────────────────────────────────────
   function barHtml(label, cssClass, value, max) {
     const pct = Math.round(Math.min(100, Math.max(0, (value / max) * 100)));
     return `
@@ -331,44 +499,37 @@
     const ammoLevel = t.ammoLevel ?? '—';
     const fireSpeed = t.fireSpeed ?? '—';
     const immunable = t.immunable ?? false;
-
     const bars = `
-      ${barHtml('Speed',      'bar-speed',     speed     === '—' ? 0 : speed,     255)}
-      ${barHtml('Health',     'bar-health',    health    === '—' ? 0 : health,    100)}
-      ${barHtml('Ammo',       'bar-ammo',      ammo      === '—' ? 0 : ammo,      100)}
-      ${barHtml('Ammo Lv',    'bar-ammoLevel', ammoLevel === '—' ? 0 : ammoLevel, 10)}
-      ${barHtml('Fire Spd',   'bar-fireSpeed', fireSpeed === '—' ? 0 : fireSpeed, 10)}
+      ${barHtml('Speed',    'bar-speed',     speed     === '—' ? 0 : speed,     255)}
+      ${barHtml('Health',   'bar-health',    health    === '—' ? 0 : health,    100)}
+      ${barHtml('Ammo',     'bar-ammo',      ammo      === '—' ? 0 : ammo,      100)}
+      ${barHtml('Ammo Lv',  'bar-ammoLevel', ammoLevel === '—' ? 0 : ammoLevel, 10)}
+      ${barHtml('Fire Spd', 'bar-fireSpeed', fireSpeed === '—' ? 0 : fireSpeed, 10)}
     `;
-    const immuneBadge = `
+    return bars + `
       <div class="immune-row">
         <span class="stat-label">Immune</span>
         <span class="immune-badge ${immunable ? 'immune-on' : 'immune-off'}">${immunable ? 'YES' : 'NO'}</span>
       </div>`;
-    return bars + immuneBadge;
   }
 
   function renderTanks(tanks) {
     noTanks.style.display = tanks.length ? 'none' : 'block';
-
     const seen = new Set(tanks.map(t => t.id));
     for (const card of grid.querySelectorAll('.tank-card')) {
       if (!seen.has(card.dataset.id)) card.remove();
     }
-
     for (const tank of tanks) {
       let card = grid.querySelector(`.tank-card[data-id="${escHtml(tank.id)}"]`);
       const wasOnline = card && card.classList.contains('online');
-
       if (!card) {
         card = document.createElement('div');
         card.className = 'tank-card';
         card.dataset.id = tank.id;
         grid.appendChild(card);
       }
-
       card.className = `tank-card ${tank.online ? 'online' : 'offline'}`;
       if (tank.lastSeen) card.dataset.lastSeen = tank.lastSeen;
-
       card.innerHTML = `
         <div class="tank-header">
           <div class="status-dot"></div>
@@ -378,7 +539,6 @@
         <div class="tank-meta">${tank.lastSeen ? `Last seen: ${timeSince(tank.lastSeen)}` : ''}</div>
         <div class="telemetry">${telemetryHtml(tank.telemetry)}</div>
       `;
-
       if (!wasOnline && tank.online) {
         card.classList.add('pulse');
         card.addEventListener('animationend', () => card.classList.remove('pulse'), { once: true });
@@ -386,7 +546,6 @@
     }
   }
 
-  // Refresh "last seen" without a server round-trip
   setInterval(() => {
     for (const card of grid.querySelectorAll('.tank-card[data-last-seen]')) {
       const meta = card.querySelector('.tank-meta');
@@ -394,7 +553,96 @@
     }
   }, 5000);
 
-  // ── Telemetry log ────────────────────────────────────────────────────────────
+  // ── RFID table ───────────────────────────────────────────────────────────────
+  const rfidTbody = document.getElementById('rfid-tbody');
+  const rfidCount = document.getElementById('rfid-count');
+  const rfidEmpty = document.getElementById('rfid-empty');
+
+  function actionBadge(action) {
+    return `<span class="action-badge action-${escHtml(action)}">${escHtml(action)}</span>`;
+  }
+
+  function recipientBadge(r) {
+    return `<span class="recipient-badge">${escHtml(r)}</span>`;
+  }
+
+  function renderRfidTable(actions) {
+    const entries = Object.entries(actions);
+    const n = entries.length;
+    rfidCount.textContent = `${n} rule${n !== 1 ? 's' : ''}`;
+
+    if (n === 0) {
+      rfidTbody.innerHTML = '<tr><td colspan="5" id="rfid-empty">No RFID rules yet. Add one below.</td></tr>';
+      return;
+    }
+
+    rfidTbody.innerHTML = entries.map(([uid, rule]) => {
+      const { action, recipient, value } = rule;
+      const valueStr = action === 'win'
+        ? '<span style="color:#484f58">—</span>'
+        : `<span class="rfid-value ${value >= 0 ? 'pos' : 'neg'}">${value >= 0 ? '+' : ''}${value}</span>`;
+      return `
+        <tr>
+          <td class="rfid-uid">${escHtml(uid)}</td>
+          <td>${actionBadge(action)}</td>
+          <td>${recipientBadge(recipient)}</td>
+          <td>${valueStr}</td>
+          <td><button class="btn btn-danger" onclick="deleteRfid('${escHtml(uid)}')">Delete</button></td>
+        </tr>`;
+    }).join('');
+  }
+
+  async function deleteRfid(uid) {
+    await fetch(`/api/rfid/${encodeURIComponent(uid)}`, { method: 'DELETE' });
+    // Table will update via WebSocket broadcast
+  }
+
+  // ── RFID form ─────────────────────────────────────────────────────────────────
+  const formUid       = document.getElementById('form-uid');
+  const formAction    = document.getElementById('form-action');
+  const formRecipient = document.getElementById('form-recipient');
+  const formValue     = document.getElementById('form-value');
+  const formValueGrp  = document.getElementById('form-value-group');
+  const formError     = document.getElementById('form-error');
+  const rfidSave      = document.getElementById('rfid-save');
+
+  // Hide value field when action is "win"
+  formAction.addEventListener('change', () => {
+    formValueGrp.style.display = formAction.value === 'win' ? 'none' : '';
+  });
+
+  rfidSave.addEventListener('click', async () => {
+    formError.style.display = 'none';
+    const uid   = formUid.value.trim().toUpperCase();
+    const action    = formAction.value;
+    const recipient = formRecipient.value;
+    const value     = action === 'win' ? 0 : Number(formValue.value);
+
+    if (!uid) { showFormError('UID is required'); return; }
+    if (action !== 'win' && isNaN(Number(formValue.value))) {
+      showFormError('Value must be a number'); return;
+    }
+
+    const res = await fetch('/api/rfid', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uid, action, recipient, value }),
+    });
+
+    if (res.ok) {
+      formUid.value   = '';
+      formValue.value = '';
+    } else {
+      showFormError('Failed to save. Check all fields.');
+    }
+  });
+
+  function showFormError(msg) {
+    formError.textContent = msg;
+    formError.style.display = 'block';
+  }
+
+  // ── Telemetry log ─────────────────────────────────────────────────────────────
   const logList  = document.getElementById('log-list');
   const logCount = document.getElementById('log-count');
   const logClear = document.getElementById('log-clear');
@@ -408,7 +656,6 @@
   function appendLog({ tankId, receivedAt, payload }) {
     const eventType = payload?.event?.type || 'unknown';
     const ts = new Date(receivedAt).toISOString().replace('T', ' ').slice(0, -1) + 'Z';
-
     const entry = document.createElement('div');
     entry.className = `log-entry type-${eventType}`;
     entry.innerHTML = `
@@ -419,16 +666,29 @@
       </div>
       <pre class="log-json">${escHtml(JSON.stringify(payload, null, 2))}</pre>
     `;
-
     logList.insertBefore(entry, logList.firstChild);
-
-    // Trim to MAX_LOG entries
-    while (logList.children.length > MAX_LOG) {
-      logList.removeChild(logList.lastChild);
-    }
-
+    while (logList.children.length > MAX_LOG) logList.removeChild(logList.lastChild);
     const n = logList.children.length;
     logCount.textContent = `${n} entr${n === 1 ? 'y' : 'ies'}`;
+  }
+
+  // ── Win overlay ───────────────────────────────────────────────────────────────
+  const winOverlay = document.getElementById('win-overlay');
+  const winSub     = document.getElementById('win-sub');
+
+  document.getElementById('win-dismiss').addEventListener('click', () => {
+    winOverlay.classList.remove('show');
+  });
+
+  function showWin({ tankId, recipient }) {
+    const recipientLabel = {
+      tank:     `Tank ${tankId} wins!`,
+      others:   `All tanks except ${tankId} win!`,
+      teammate: `${tankId}'s team wins!`,
+      all:      'Everyone wins!',
+    }[recipient] || `${tankId} triggered a win!`;
+    winSub.textContent = recipientLabel;
+    winOverlay.classList.add('show');
   }
 
   connect();
