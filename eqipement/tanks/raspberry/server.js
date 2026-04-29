@@ -116,7 +116,7 @@ parser.on('data', (line) => {
     console.log('Serial received:', msg);
     // Enrich telemetry and fire events with RPi-side meta
     const type = msg?.event?.type;
-    if ((type === 'telemetry' || type === 'fire') && msg.event.data) {
+    if ((type === 'telemetry' || type === 'fire' || type === 'rfid') && msg.event.data) {
       msg.event.data.ip       = getLocalIP();
       msg.event.data.hostname = TANK_ID;
     }

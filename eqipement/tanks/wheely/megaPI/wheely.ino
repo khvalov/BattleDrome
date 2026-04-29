@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <SoftwareSerial.h>
+#include <SPI.h>
+#include <MFRC522.h>
 #include <MeMegaPi.h>
 #include <MePS2.h>
 #include <ArduinoJson.h>  // Install via Library Manager: "ArduinoJson" by Benoit Blanchon
@@ -30,6 +32,15 @@ const int DEADZONE  = 20;
 
 // ── IR blaster ─────────────────────────────────────────────────────────────────
 const int IR_TX_PIN = 3;  // ← Set to your IR LED data pin
+
+// ── RFID reader ────────────────────────────────────────────────────────────────
+const uint8_t RST_PIN = 30;
+const uint8_t SS_PIN  = 22;
+MFRC522 rfid(SS_PIN, RST_PIN);  // Uses SPI: MOSI=51, MISO=50, SCK=52
+
+const unsigned long RFID_COOLDOWN_MS = 3000;  // min ms between same-card events
+String        lastRfidUid  = "";
+unsigned long lastRfidTime = 0;
 
 // ── Game state ─────────────────────────────────────────────────────────────────
 int  health    = 100;
@@ -88,9 +99,6 @@ void mecanumDrive(float lx, float ly, float rx) {
 }
 
 // ── IR blaster ─────────────────────────────────────────────────────────────────
-// IR packet encodes TANK_ID and ammoLevel so the receiver can identify
-// the attacker and calculate damage. Replace the body with your IR library:
-//   e.g. irsend.sendNEC(encodedPayload, 32);
 void fireIR() {
   // TODO: replace with actual IR library call, e.g.:
   //   uint32_t payload = encodeShot(TANK_ID, ammoLevel);
@@ -99,6 +107,43 @@ void fireIR() {
   digitalWrite(IR_TX_PIN, HIGH);
   delayMicroseconds(600);
   digitalWrite(IR_TX_PIN, LOW);
+}
+
+// ── RFID ───────────────────────────────────────────────────────────────────────
+// Returns uppercase hex UID string, or "" if no new card / same card too soon.
+String readRfidUid(unsigned long now) {
+  if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return "";
+
+  String uid = "";
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    if (rfid.uid.uidByte[i] < 0x10) uid += "0";
+    uid += String(rfid.uid.uidByte[i], HEX);
+  }
+  uid.toUpperCase();
+
+  rfid.PICC_HaltA();
+  rfid.PCD_StopCrypto1();
+
+  // Debounce: skip same card within cooldown window
+  if (uid == lastRfidUid && (now - lastRfidTime) < RFID_COOLDOWN_MS) return "";
+
+  lastRfidUid  = uid;
+  lastRfidTime = now;
+  return uid;
+}
+
+void sendRfidEvent(const String& uid) {
+  StaticJsonDocument<200> doc;
+  doc["timestamp"] = millis() / 1000;
+  JsonObject event = doc.createNestedObject("event");
+  event["type"] = "rfid";
+  JsonObject data = event.createNestedObject("data");
+  data["tankId"]   = TANK_ID;
+  data["tankType"] = TANK_TYPE;
+  data["uid"]      = uid;
+
+  serializeJson(doc, Serial2);
+  Serial2.print("\r\n");
 }
 
 // ── Telemetry ──────────────────────────────────────────────────────────────────
@@ -123,7 +168,7 @@ void sendTelemetry() {
   Serial2.print("\r\n");
 }
 
-// Fire event: sent immediately on each shot with shooter identity and remaining ammo
+// Fire event: sent immediately on each shot
 void sendFireEvent() {
   StaticJsonDocument<200> doc;
   doc["timestamp"] = millis() / 1000;
@@ -132,9 +177,9 @@ void sendFireEvent() {
   JsonObject data = event.createNestedObject("data");
   data["tankId"]    = TANK_ID;
   data["tankType"]  = TANK_TYPE;
-  data["senderId"]  = TANK_ID;    // attacker identity for damage resolution
-  data["ammoLevel"] = ammoLevel;  // damage multiplier for the receiver
-  data["ammo"]      = ammo;       // remaining rounds after this shot
+  data["senderId"]  = TANK_ID;
+  data["ammoLevel"] = ammoLevel;
+  data["ammo"]      = ammo;
 
   serializeJson(doc, Serial2);
   Serial2.print("\r\n");
@@ -165,6 +210,10 @@ void setup() {
   pinMode(IR_TX_PIN, OUTPUT);
   digitalWrite(IR_TX_PIN, LOW);
 
+  SPI.begin();
+  rfid.PCD_Init();
+  Serial.print("RFID reader ready. Tank: "); Serial.println(TANK_ID);
+
   TCCR1A = _BV(WGM10);
   TCCR1B = _BV(CS11) | _BV(WGM12);
   TCCR2A = _BV(WGM21) | _BV(WGM20);
@@ -173,7 +222,6 @@ void setup() {
   MePS2.begin(115200);
   delay(1000);
   stopAll();
-  Serial.print("Ready. Tank: "); Serial.println(TANK_ID);
 }
 
 // ── Loop ───────────────────────────────────────────────────────────────────────
@@ -191,6 +239,13 @@ void loop() {
     }
   }
 
+  // ── RFID scan ──────────────────────────────────────────────────────────────
+  String uid = readRfidUid(now);
+  if (uid.length() > 0) {
+    Serial.print("RFID: "); Serial.println(uid);
+    sendRfidEvent(uid);
+  }
+
   // ── Read controller ────────────────────────────────────────────────────────
   MePS2.loop();
   float lx = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_LX));
@@ -199,10 +254,8 @@ void loop() {
   mecanumDrive(rx, -lx, ly);
 
   // ── Square button → fire ───────────────────────────────────────────────────
-  // ButtonState() is active-low: bit = 0 means pressed.
-  // Adjust PS2_SQUARE to match your MePS2 library version if needed.
-  bool squareNow = !(MePS2.ButtonState() & PS2_SQUARE);
-  if (squareNow && !squarePrevious) {          // rising edge — one shot per press
+  bool squareNow = MePS2.ButtonPressed(MeJOYSTICK_SQUARE);
+  if (squareNow && !squarePrevious) {
     if (ammo > 0 && (now - lastFireTime >= (unsigned long)fireSpeed)) {
       fireIR();
       ammo--;
