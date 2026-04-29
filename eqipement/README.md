@@ -91,6 +91,29 @@ Sent immediately when the square button fires. The central server uses this to u
 | `ammoLevel` | Damage multiplier carried in the IR packet |
 | `ammo` | Remaining rounds **after** this shot |
 
+### `rfid` — tank → server, on each card scan
+Sent when the MFRC522 reader detects a new card. Same UID is suppressed for 3 s (debounce). The server looks up the UID in its action table and, if a match is found, publishes a `command` back to the tank.
+
+```json
+{
+  "timestamp": 1234567890,
+  "event": {
+    "type": "rfid",
+    "data": {
+      "tankId":   "WHLYA1",
+      "tankType": "wheely",
+      "uid":      "A1B2C3D4",
+      "ip":       "192.168.1.42",
+      "hostname": "wheely-pi"
+    }
+  }
+}
+```
+
+| Field | Description |
+|---|---|
+| `uid` | Card UID as uppercase hex string (4–7 bytes, no spaces) |
+
 ### `command` — server → tank, via MQTT commands topic
 Updates a single game-state variable on the Arduino. The Raspberry Pi subscribes to the commands topic and forwards matching messages to Arduino via UART.
 
@@ -112,5 +135,5 @@ Updates a single game-state variable on the Arduino. The Raspberry Pi subscribes
 
 | Topic | Direction | Carries |
 |---|---|---|
-| `battledrome/tanks/{hostname}/events` | tank → server | `system`, `error`, `telemetry`, `fire` |
+| `battledrome/tanks/{hostname}/events` | tank → server | `system`, `error`, `telemetry`, `fire`, `rfid` |
 | `battledrome/tanks/{hostname}/commands` | server → tank | `command` |

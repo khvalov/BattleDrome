@@ -25,6 +25,7 @@ Wheely is an omnidirectional mobile platform based on the **mBot Mega** architec
 | 4 | **Encoder DC Motors** | High-torque motors for precision movement |
 | 2 | **RGB LED Modules** | Status indicators |
 | 1 | **Raspberry Pi Zero** | Network bridge to MQTT |
+| 1 | **MFRC522 RFID reader** | SPI RFID card reader (RST=pin 30, SS=pin 22) |
 
 ### Building Components
 
@@ -59,6 +60,8 @@ UART uses **`Serial2`** on the ATmega2560 at **115200 baud** — this is the har
 - `MeMegaPi` — Makeblock motor drivers
 - `MePS2` — PS2 Bluetooth controller
 - `ArduinoJson` by Benoit Blanchon
+- `MFRC522` by Miguel Balboa — RFID reader
+- `SPI` — built-in Arduino SPI library (required by MFRC522)
 
 ### Controls
 
@@ -78,6 +81,24 @@ UART uses **`Serial2`** on the ATmega2560 at **115200 baud** — this is the har
 | PORT_1 | Rear-Right | +1 (normal) |
 
 Deadzone: **20 units** | Max PWM: **255**
+
+### RFID reader
+
+| Constant | Value | Description |
+|:---|:---|:---|
+| `RST_PIN` | `30` | MFRC522 reset pin |
+| `SS_PIN` | `22` | MFRC522 SPI slave-select pin |
+| `RFID_COOLDOWN_MS` | `3000` | Min ms before the same UID triggers again |
+
+Uses hardware SPI (MOSI=51, MISO=50, SCK=52 on ATmega2560). When a card is detected the firmware reads the UID, applies the 3 s debounce, and sends an `rfid` event over `Serial2`:
+
+```json
+{ "timestamp": 1234, "event": { "type": "rfid", "data": { "tankId": "WHLYA1", "tankType": "wheely", "uid": "A1B2C3D4" } } }
+```
+
+The Raspberry Pi enriches the event with `ip` and `hostname` before publishing to MQTT. The central server then looks up the UID in its `RFID_ACTIONS` table and sends a `command` back if a match is found.
+
+Required library: **MFRC522** by Miguel Balboa (Arduino Library Manager).
 
 ### Tank settings
 
@@ -102,7 +123,7 @@ On each shot the firmware:
 
 The IR packet encodes `TANK_ID` and `ammoLevel` so the receiving tank can identify the attacker and calculate damage.
 
-> **Note:** Button detection uses `!(MePS2.ButtonState() & PS2_SQUARE)`. Adjust the constant name if your MePS2 library version differs.
+> **Note:** Button detection uses `MePS2.ButtonPressed(MeJOYSTICK_SQUARE)`. Both the method name and constant come from the official Makeblock library header (`MePS2.h`). Rising-edge logic (one shot per press) is handled in firmware with `squarePrevious`.
 
 ### Telemetry
 

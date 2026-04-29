@@ -9,8 +9,22 @@ const TANK_TOPIC = 'battledrome/tanks/+/events';
 const OFFLINE_TIMEOUT_MS = 15_000;
 const HTTP_PORT = process.env.PORT || 8080;
 
+// ── RFID action table ──────────────────────────────────────────────────────────
+// Map each RFID tag UID (uppercase hex, no spaces) to a command sent back to
+// the tank that scanned it. Add your physical tag UIDs here.
+//
+// Available params: health (0-100), ammo (0-100), ammoLevel (1-10),
+//                   fireSpeed (1-10), immunable (0 or 1)
+const RFID_ACTIONS = {
+  // 'A1B2C3D4': { param: 'health',    value: 100 },  // Medkit  — full heal
+  // 'B2C3D4E5': { param: 'ammo',      value: 100 },  // Ammo crate — full reload
+  // 'C3D4E5F6': { param: 'immunable', value: 1   },  // Shield  — enable immunity
+  // 'D4E5F6A7': { param: 'fireSpeed', value: 1   },  // Nitro   — max fire rate
+  // 'E5F6A7B8': { param: 'ammoLevel', value: 10  },  // Power-up — max damage
+};
+
 // ── Tank state ─────────────────────────────────────────────────────────────────
-const tanks = {}; // { tankId: { online, lastSeen, lastEvent } }
+const tanks = {}; // { tankId: { online, lastSeen, lastEvent, telemetry } }
 
 function setTank(tankId, patch) {
   tanks[tankId] = Object.assign(tanks[tankId] || {}, patch);
@@ -49,6 +63,28 @@ mqttClient.on('message', (topic, raw) => {
   if (eventType === 'fire' && payload.event.data) {
     const prev = (tanks[tankId] || {}).telemetry || {};
     patch.telemetry = { ...prev, ammo: payload.event.data.ammo };
+  }
+
+  // RFID scan: log to console and dispatch action if configured
+  if (eventType === 'rfid' && payload.event.data) {
+    const uid = (payload.event.data.uid || '').toUpperCase();
+    console.log(`[RFID] Tank ${tankId} scanned UID: ${uid}`);
+
+    const action = RFID_ACTIONS[uid];
+    if (action) {
+      console.log(`[RFID] UID ${uid} → applying action:`, action);
+      const cmd = {
+        timestamp: Math.floor(Date.now() / 1000),
+        event: { type: 'command', param: action.param, value: action.value },
+      };
+      mqttClient.publish(
+        `battledrome/tanks/${tankId}/commands`,
+        JSON.stringify(cmd),
+        { qos: 1 }
+      );
+    } else {
+      console.log(`[RFID] UID ${uid} — no action configured`);
+    }
   }
 
   setTank(tankId, patch);
@@ -90,7 +126,6 @@ const clients = new Set();
 
 wss.on('connection', (ws) => {
   clients.add(ws);
-  // Send current state immediately on connect
   ws.send(JSON.stringify({ type: 'update', tanks: snapshot() }));
   ws.on('close', () => clients.delete(ws));
   ws.on('error', () => clients.delete(ws));

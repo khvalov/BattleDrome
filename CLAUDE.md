@@ -19,7 +19,7 @@ PS2 Bluetooth remote → MegaPi (ATmega2560) ←UART→ Raspberry Pi Zero ←MQT
 3. **Central server** (`server/index.js`) — Subscribes to MQTT wildcard, tracks online/offline state per tank (15 s timeout), serves the dashboard HTML, pushes live updates via WebSocket.
 
 **MQTT topics:**
-- `battledrome/tanks/{hostname}/events` — tank → server (telemetry, fire, heartbeat, errors)
+- `battledrome/tanks/{hostname}/events` — tank → server (telemetry, fire, rfid, heartbeat, errors)
 - `battledrome/tanks/{hostname}/commands` — server → tank (param update commands)
 
 **Message types:**
@@ -30,18 +30,20 @@ PS2 Bluetooth remote → MegaPi (ATmega2560) ←UART→ Raspberry Pi Zero ←MQT
 | `error` | tank→server | Failure report |
 | `telemetry` | tank→server | Tank stats snapshot every 500 ms (speed, health, ammo, …) |
 | `fire` | tank→server | Immediate shot event (senderId, ammoLevel, remaining ammo) |
+| `rfid` | tank→server | RFID tag scanned (uid); server looks up action and replies with `command` |
 | `command` | server→tank | Update a game-state variable on the Arduino |
 
 ## Firmware Development
 
 - Open `eqipement/tanks/wheely/megaPI/wheely.ino` in Arduino IDE or PlatformIO
-- Required libraries: `MeMegaPi`, `MePS2` (Makeblock), **`ArduinoJson`** (Library Manager)
+- Required libraries: `MeMegaPi`, `MePS2` (Makeblock), **`ArduinoJson`** by Benoit Blanchon, **`MFRC522`** by Miguel Balboa, `SPI` (built-in) — all via Library Manager
 - Upload target: MegaPi board (ATmega2560)
 - `Serial` (115200) = USB debug; `Serial2` (115200) = Raspberry Pi UART via flex cable
 - Motor port mapping: FL=PORT_12, FR=PORT_4, RL=PORT_9, RR=PORT_1
 - Tank identity set via `TANK_ID` (≤6 chars) and `TANK_TYPE` constants at top of file
 - IR transmit pin: `IR_TX_PIN` constant (default 3) — replace `fireIR()` body with your IR library call
 - Square button fires: checks `ammo > 0` and `fireSpeed` ms cooldown; decrements ammo, sends `fire` event
+- RFID reader on RST_PIN=30, SS_PIN=22 via SPI (MFRC522 library); sends `rfid` event with UID on card scan; 3 s debounce per UID
 
 **Game-state variables (set via `command` messages):**
 

@@ -58,9 +58,9 @@ sudo systemctl start iot-app.service
 |:---|:---|
 | Serial port | `/dev/ttyS0` at 115200 baud (UART to MegaPi `Serial2`) |
 | Tank identity | Uses `os.hostname()` as the routing key in MQTT topics (stored as `TANK_ID`) |
-| Publishes to | `battledrome/tanks/{hostname}/events` (`telemetry`, `fire`, `system`, `error`) |
+| Publishes to | `battledrome/tanks/{hostname}/events` (`telemetry`, `fire`, `rfid`, `system`, `error`) |
 | Subscribes to | `battledrome/tanks/{hostname}/commands` |
-| Telemetry enrichment | Before forwarding `telemetry` or `fire` events to MQTT, injects `ip` (first non-loopback IPv4) and `hostname` (`os.hostname()`) into `event.data` |
+| Telemetry enrichment | Before forwarding `telemetry`, `fire`, or `rfid` events to MQTT, injects `ip` (first non-loopback IPv4) and `hostname` (`os.hostname()`) into `event.data` |
 | Command forwarding | Any message received on the commands topic is written verbatim to Arduino via UART |
 | Heartbeat | `system / heartbeat` published every **5 s** so the central server doesn't mark the tank offline |
 | WiFi fallback | If no WiFi at startup, launches `wifi-connect --portal-ssid "MyDevice-Setup"` |
