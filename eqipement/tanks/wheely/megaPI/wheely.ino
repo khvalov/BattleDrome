@@ -5,7 +5,8 @@
 #include <MFRC522.h>
 #include <MeMegaPi.h>
 #include <MePS2.h>
-#include <ArduinoJson.h>  // Install via Library Manager: "ArduinoJson" by Benoit Blanchon
+#include <ArduinoJson.h>        // Library Manager: "ArduinoJson" by Benoit Blanchon
+#include <Adafruit_NeoPixel.h>  // Library Manager: "Adafruit NeoPixel" by Adafruit
 
 // ── Tank settings ──────────────────────────────────────────────────────────────
 const char TANK_ID[]   = "WHLYA1";   // Unique identifier, up to 6 characters
@@ -33,6 +34,13 @@ const int DEADZONE = 20;
 
 // ── IR blaster ─────────────────────────────────────────────────────────────────
 const int IR_TX_PIN = 3;  // ← Set to your IR LED data pin
+
+// ── WS2812 health LED ──────────────────────────────────────────────────────────
+// 2×2 matrix, DIN on pin 60 (= A6 on ATmega2560).
+// Green: health > 50  |  Yellow: 5–50  |  Red: health < 5
+const uint8_t LED_PIN   = 60;
+const uint8_t LED_COUNT = 4;
+Adafruit_NeoPixel leds(LED_COUNT, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 // ── RFID reader ────────────────────────────────────────────────────────────────
 const uint8_t RST_PIN = 30;
@@ -220,16 +228,26 @@ void handleCommand(const String& line) {
   const char* param = ev["param"] | "";
   int value = ev["value"] | 0;
 
-  if      (strcmp(param, "health")    == 0) health    = constrain(value, 0, 100);
-  else if (strcmp(param, "ammo")      == 0) ammo      = constrain(value, 0, 100);
-  else if (strcmp(param, "ammoLevel") == 0) ammoLevel = constrain(value, 1, 10);
-  else if (strcmp(param, "fireSpeed") == 0) fireSpeed = constrain(value, 1, 10);
-  else if (strcmp(param, "immunable") == 0) immunable = (value != 0);
-  else if (strcmp(param, "maxSpeed")  == 0) maxSpeed  = constrain(value, 1, 255);
-  else if (strcmp(param, "minSpeed")  == 0) minSpeed  = constrain(value, 0, 255);
+  if      (strcmp(param, "health")    == 0) { health    = constrain(value, 0, 100); updateHealthLed(); }
+  else if (strcmp(param, "ammo")      == 0)   ammo      = constrain(value, 0, 100);
+  else if (strcmp(param, "ammoLevel") == 0)   ammoLevel = constrain(value, 1, 10);
+  else if (strcmp(param, "fireSpeed") == 0)   fireSpeed = constrain(value, 1, 10);
+  else if (strcmp(param, "immunable") == 0)   immunable = (value != 0);
+  else if (strcmp(param, "maxSpeed")  == 0)   maxSpeed  = constrain(value, 1, 255);
+  else if (strcmp(param, "minSpeed")  == 0)   minSpeed  = constrain(value, 0, 255);
 
   Serial.print("[CMD] "); Serial.print(param);
   Serial.print(" = "); Serial.println(value);
+}
+
+// ── Health LED ─────────────────────────────────────────────────────────────────
+void updateHealthLed() {
+  uint32_t colour;
+  if      (health > 50) colour = leds.Color(0,   180,   0);  // green
+  else if (health >= 5) colour = leds.Color(180, 140,   0);  // yellow
+  else                  colour = leds.Color(180,   0,   0);  // red (critical / dead)
+  leds.fill(colour);
+  leds.show();
 }
 
 // ── Setup ──────────────────────────────────────────────────────────────────────
@@ -238,6 +256,10 @@ void setup() {
   Serial2.begin(115200);  // Raspberry Pi via flex cable UART
   pinMode(IR_TX_PIN, OUTPUT);
   digitalWrite(IR_TX_PIN, LOW);
+
+  leds.begin();
+  leds.setBrightness(80);  // ~31% — bright enough to see, won't blind the arena
+  updateHealthLed();       // show initial health colour at boot
 
   SPI.begin();
   rfid.PCD_Init();
