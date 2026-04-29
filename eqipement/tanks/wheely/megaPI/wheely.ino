@@ -187,8 +187,14 @@ void sendFireEvent() {
 
 // ── Command handler ────────────────────────────────────────────────────────────
 void handleCommand(const String& line) {
-  StaticJsonDocument<128> doc;
-  if (deserializeJson(doc, line) != DeserializationError::Ok) return;
+  // Buffer must hold the raw JSON copy (~79 bytes) + node overhead (~80 bytes).
+  // 128 is too small → DeserializationError::NoMemory → commands silently ignored.
+  StaticJsonDocument<256> doc;
+  DeserializationError err = deserializeJson(doc, line);
+  if (err != DeserializationError::Ok) {
+    Serial.print("[CMD] JSON error: "); Serial.println(err.c_str());
+    return;
+  }
 
   JsonObject ev = doc["event"];
   if (!ev || strcmp(ev["type"] | "", "command") != 0) return;
@@ -201,6 +207,9 @@ void handleCommand(const String& line) {
   else if (strcmp(param, "ammoLevel") == 0) ammoLevel = constrain(value, 1, 10);
   else if (strcmp(param, "fireSpeed") == 0) fireSpeed = constrain(value, 1, 10);
   else if (strcmp(param, "immunable") == 0) immunable = (value != 0);
+
+  Serial.print("[CMD] "); Serial.print(param);
+  Serial.print(" = "); Serial.println(value);
 }
 
 // ── Setup ──────────────────────────────────────────────────────────────────────
