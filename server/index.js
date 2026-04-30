@@ -232,6 +232,23 @@ const httpServer = http.createServer(async (req, res) => {
     }
   }
 
+  // ── Tank display name API ──────────────────────────────────────────────────
+  // PATCH /api/tanks/:id  { "displayName": "Red Dragon" }
+  // Display name is server-only — never sent to the tank hardware.
+  if (url.startsWith('/api/tanks/') && req.method === 'PATCH') {
+    const tankId = decodeURIComponent(url.slice('/api/tanks/'.length));
+    let body;
+    try { body = await readBody(req); } catch {
+      res.writeHead(400); res.end('Invalid JSON'); return;
+    }
+    const name = String(body.displayName || '').trim().slice(0, 32);
+    setTank(tankId, { displayName: name || null });
+    broadcast({ type: 'update', tanks: snapshot() });
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
   if (url.startsWith('/api/rfid/') && req.method === 'DELETE') {
     const uid = url.slice('/api/rfid/'.length).toUpperCase();
     if (RFID_ACTIONS[uid]) {

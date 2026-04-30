@@ -101,6 +101,51 @@
       margin-bottom: 0.9rem;
     }
 
+    .tank-id-label {
+      font-size: 0.62rem;
+      color: #484f58;
+      margin-left: 0.3rem;
+    }
+
+    .btn-rename {
+      background: none;
+      border: none;
+      color: #484f58;
+      cursor: pointer;
+      font-size: 0.72rem;
+      padding: 0 0.25rem;
+      line-height: 1;
+    }
+    .btn-rename:hover { color: #8b949e; }
+
+    .rename-form {
+      display: flex;
+      gap: 0.4rem;
+      align-items: center;
+      flex: 1;
+    }
+    .rename-input {
+      background: #0d1117;
+      border: 1px solid #58a6ff;
+      border-radius: 4px;
+      color: #e6edf3;
+      font-family: inherit;
+      font-size: 0.85rem;
+      padding: 0.15rem 0.4rem;
+      flex: 1;
+      min-width: 0;
+      outline: none;
+    }
+    .rename-ok, .rename-cancel {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 0.75rem;
+      padding: 0 0.2rem;
+    }
+    .rename-ok     { color: #3fb950; }
+    .rename-cancel { color: #f85149; }
+
     /* ── Telemetry bars ── */
     .telemetry { display: flex; flex-direction: column; gap: 0.55rem; }
 
@@ -467,7 +512,7 @@
     ws.onclose = () => { badge.textContent = 'DISCONNECTED'; badge.className = 'disconnected'; setTimeout(connect, 3000); };
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data);
-      if (msg.type === 'update')       renderTanks(msg.tanks);
+      if (msg.type === 'update')       { window._lastTanks = msg.tanks; renderTanks(msg.tanks); }
       if (msg.type === 'log')          appendLog(msg);
       if (msg.type === 'rfid_actions') renderRfidTable(msg.actions);
       if (msg.type === 'win')          showWin(msg);
@@ -542,10 +587,14 @@
       }
       card.className = `tank-card ${tank.online ? 'online' : 'offline'}`;
       if (tank.lastSeen) card.dataset.lastSeen = tank.lastSeen;
+      const displayName = tank.displayName || tank.id;
+      const showIdLabel = tank.displayName ? `<span class="tank-id-label">(${escHtml(tank.id)})</span>` : '';
       card.innerHTML = `
         <div class="tank-header">
           <div class="status-dot"></div>
-          <span class="tank-name">${escHtml(tank.id)}</span>
+          <span class="tank-name" id="name-${escHtml(tank.id)}">${escHtml(displayName)}</span>
+          ${showIdLabel}
+          <button class="btn-rename" title="Rename" onclick="startRename('${escHtml(tank.id)}')">✎</button>
           <span class="tank-status-label">${tank.online ? 'ONLINE' : 'OFFLINE'}</span>
         </div>
         <div class="tank-meta">${tank.lastSeen ? `Last seen: ${timeSince(tank.lastSeen)}` : ''}</div>
@@ -701,6 +750,51 @@
     }[recipient] || `${tankId} triggered a win!`;
     winSub.textContent = recipientLabel;
     winOverlay.classList.add('show');
+  }
+
+  // ── Tank rename ───────────────────────────────────────────────────────────────
+  function startRename(tankId) {
+    const card = grid.querySelector(`.tank-card[data-id="${escHtml(tankId)}"]`);
+    if (!card) return;
+    const header = card.querySelector('.tank-header');
+    const currentName = card.querySelector(`#name-${escHtml(tankId)}`).textContent;
+
+    // Replace header content with an inline form
+    header.innerHTML = `
+      <div class="status-dot"></div>
+      <div class="rename-form">
+        <input class="rename-input" id="rename-input-${escHtml(tankId)}"
+               type="text" value="${escHtml(currentName)}" maxlength="32" />
+        <button class="rename-ok"     onclick="commitRename('${escHtml(tankId)}')">✔</button>
+        <button class="rename-cancel" onclick="cancelRename('${escHtml(tankId)}')">✖</button>
+      </div>
+    `;
+    const input = document.getElementById(`rename-input-${tankId}`);
+    input.focus();
+    input.select();
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter')  commitRename(tankId);
+      if (e.key === 'Escape') cancelRename(tankId);
+    });
+  }
+
+  async function commitRename(tankId) {
+    const input = document.getElementById(`rename-input-${tankId}`);
+    if (!input) return;
+    const name = input.value.trim();
+    await fetch(`/api/tanks/${encodeURIComponent(tankId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: name }),
+    });
+    // Server broadcasts updated snapshot — card will re-render automatically
+  }
+
+  function cancelRename(tankId) {
+    // Trigger a re-render of just this card by re-using last known tanks state
+    // The simplest way is to re-request via WS; instead just force renderTanks
+    // with the cached state. We keep a local copy for this purpose.
+    if (window._lastTanks) renderTanks(window._lastTanks);
   }
 
   connect();
