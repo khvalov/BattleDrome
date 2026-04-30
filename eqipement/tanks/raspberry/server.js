@@ -114,8 +114,17 @@ parser.on('data', (line) => {
   try {
     const msg = JSON.parse(line.trim());
     console.log('Serial received:', msg);
+    const type   = msg?.event?.type;
+    const action = msg?.event?.action;
+
+    // Ping-pong: Arduino polls us to detect RPi presence.
+    // Reply immediately via serial; do not publish to MQTT.
+    if (type === 'system' && action === 'ping') {
+      sendSerial(buildEvent('system', 'pong', 1));
+      return;
+    }
+
     // Enrich telemetry and fire events with RPi-side meta
-    const type = msg?.event?.type;
     if ((type === 'telemetry' || type === 'fire' || type === 'rfid') && msg.event.data) {
       msg.event.data.ip       = getLocalIP();
       msg.event.data.hostname = TANK_ID;

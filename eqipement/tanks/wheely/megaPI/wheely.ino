@@ -68,6 +68,12 @@ float speedFL = 0, speedFR = 0, speedRL = 0, speedRR = 0;
 const unsigned long TELEMETRY_INTERVAL_MS = 500;
 unsigned long lastTelemetry = 0;
 
+// ── RPi connectivity ping ──────────────────────────────────────────────────────
+// Arduino sends a ping every PING_INTERVAL_MS; RPi replies with pong.
+// On first pong, rpiConnected becomes true and LEDs switch to health mode.
+const unsigned long PING_INTERVAL_MS = 5000;
+unsigned long lastPing = 0;
+
 // ── Fire control ───────────────────────────────────────────────────────────────
 unsigned long lastFireTime   = 0;
 bool          squarePrevious = false;
@@ -197,6 +203,12 @@ String readRfidUid(unsigned long now) {
   lastRfidUid  = uid;
   lastRfidTime = now;
   return uid;
+}
+
+// ── Ping (connectivity poll) ───────────────────────────────────────────────────
+// Minimal fixed-size string — no ArduinoJson overhead needed.
+void sendPing() {
+  Serial2.print(F("{\"event\":{\"type\":\"system\",\"action\":\"ping\"}}\r\n"));
 }
 
 void sendRfidEvent(const String& uid) {
@@ -329,13 +341,15 @@ void handleSerialLine(const String& line) {
   // ── system ────────────────────────────────────────────────────────────────
   } else if (strcmp(type, "system") == 0) {
     const char* action = ev["action"] | "";
-    // Accept either "connected" (first boot) or "heartbeat" (already running).
-    // The Arduino can miss the one-shot "connected" if it reboots while the
-    // RPi is already up; heartbeats arrive every 5 s and act as a fallback.
-    if ((strcmp(action, "connected") == 0 || strcmp(action, "heartbeat") == 0)
-        && !rpiConnected) {
+    // "pong"      — RPi replied to our periodic ping (primary path).
+    // "connected" — legacy one-shot sent when RPi MQTT connects.
+    // "heartbeat" — fallback (only sent to MQTT, not serial, but kept for safety).
+    if (!rpiConnected &&
+        (strcmp(action, "pong") == 0 ||
+         strcmp(action, "connected") == 0 ||
+         strcmp(action, "heartbeat") == 0)) {
       rpiConnected = true;
-      updateHealthLed();  // health=100 → green
+      updateHealthLed();
       Serial.println("[SYS] RPi alive — LEDs → health mode");
     }
   }
@@ -413,6 +427,12 @@ void loop() {
     }
   }
   squarePrevious = squareNow;
+
+  // ── Periodic RPi ping ──────────────────────────────────────────────────────
+  if (now - lastPing >= PING_INTERVAL_MS) {
+    sendPing();
+    lastPing = now;
+  }
 
   // ── Periodic telemetry ─────────────────────────────────────────────────────
   if (now - lastTelemetry >= TELEMETRY_INTERVAL_MS) {
