@@ -16,7 +16,12 @@ function getLocalIP() {
 }
 
 // ── Serial port ────────────────────────────────────────────────────────────────
-const serial = new SerialPort({ path: '/dev/ttyS0', baudRate: 115200 });
+// /dev/serial0 is the system symlink to whichever UART is wired to GPIO14/15.
+// On RPi Zero W with enable_uart=1 in /boot/config.txt this resolves to the
+// stable PL011 UART (/dev/ttyAMA0). Without that flag it resolves to the
+// mini UART (/dev/ttyS0) whose TX baud rate drifts with the CPU clock and
+// causes the Arduino to reject incoming bytes.
+const serial = new SerialPort({ path: '/dev/serial0', baudRate: 115200 });
 const parser = serial.pipe(new ReadlineParser({ delimiter: '\r\n' }));
 
 // ── MQTT ───────────────────────────────────────────────────────────────────────
