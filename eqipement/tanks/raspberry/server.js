@@ -50,7 +50,9 @@ function buildEvent(type, action = null, value = null) {
 
 function sendSerial(payload) {
   const json = JSON.stringify(payload);
-  serial.write(json + '\r\n');
+  serial.write(json + '\r\n', (err) => {
+    if (err) console.error('Serial write error:', err.message);
+  });
   console.log('Serial sent:', json);
 }
 
@@ -86,7 +88,13 @@ function stopHeartbeat() {
 // ── MQTT events ────────────────────────────────────────────────────────────────
 mqttClient.on('connect', () => {
   console.log('MQTT connected');
-  mqttClient.subscribe(COMMAND_TOPIC, { qos: 1 });
+  mqttClient.subscribe(COMMAND_TOPIC, { qos: 1 }, (err, granted) => {
+    if (err) {
+      console.error('MQTT subscribe error:', err.message);
+    } else {
+      console.log('Subscribed to', granted[0].topic, 'qos', granted[0].qos);
+    }
+  });
   const connected = isWifiConnected();
   const payload = connected
     ? buildEvent('system', 'connected', 1)
@@ -100,7 +108,10 @@ mqttClient.on('message', (topic, message) => {
   // Forward command from MQTT to Arduino via serial
   const raw = message.toString().trim();
   console.log('Command received, forwarding to Arduino:', raw);
-  serial.write(raw + '\r\n');
+  serial.write(raw + '\r\n', (err) => {
+    if (err) console.error('Serial write error:', err.message);
+    else      console.log('Serial write OK');
+  });
 });
 
 mqttClient.on('error', (err) => {
