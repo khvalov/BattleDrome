@@ -47,7 +47,7 @@ bool rpiConnected = false;
 
 // ── RFID reader ────────────────────────────────────────────────────────────────
 const uint8_t RST_PIN = 30;
-const uint8_t SS_PIN  = 22;  // pin 7 is in megaPi_slots[1] — conflicts with motor control
+const uint8_t SS_PIN  = A6;  // = pin 60 on ATmega2560; not present in any MeMegaPi port table
 MFRC522 rfid(SS_PIN, RST_PIN);  // Uses SPI: MOSI=51, MISO=50, SCK=52
 
 const unsigned long RFID_COOLDOWN_MS = 5000;  // min ms between same-card events

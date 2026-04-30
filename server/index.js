@@ -119,9 +119,14 @@ function applyRfidAction(scannerTankId, entry) {
       newValue = value > 0 ? 1 : 0;
     } else {
       // Delta: add value to current, then clamp to valid range
-      const current = tanks[targetId]?.telemetry?.[param] ?? 0;
+      const rawCurrent = tanks[targetId]?.telemetry?.[param];
+      if (rawCurrent === undefined) {
+        console.warn(`[RFID] WARNING: ${param} not in telemetry for ${targetId} — defaulting current to 0`);
+      }
+      const current = rawCurrent ?? 0;
       const [min, max] = PARAM_RANGE[param] || [0, 100];
       newValue = Math.min(max, Math.max(min, current + value));
+      console.log(`[RFID] ${param}: current=${current} delta=${value} → newValue=${newValue} (range ${min}–${max})`);
     }
 
     sendCommand(targetId, param, newValue);
