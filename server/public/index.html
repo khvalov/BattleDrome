@@ -587,6 +587,15 @@
       }
       card.className = `tank-card ${tank.online ? 'online' : 'offline'}`;
       if (tank.lastSeen) card.dataset.lastSeen = tank.lastSeen;
+
+      // If a rename input inside this card is focused, only update the telemetry
+      // section so the user isn't kicked out of the input field mid-typing.
+      if (card.querySelector('.rename-input') === document.activeElement) {
+        const tel = card.querySelector('.telemetry');
+        if (tel) tel.innerHTML = telemetryHtml(tank.telemetry);
+        continue;
+      }
+
       const displayName = tank.displayName || tank.id;
       const showIdLabel = tank.displayName ? `<span class="tank-id-label">(${escHtml(tank.id)})</span>` : '';
       card.innerHTML = `
