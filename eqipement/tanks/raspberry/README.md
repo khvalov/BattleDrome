@@ -76,6 +76,14 @@ sudo systemctl start iot-app.service
 
 ---
 
+## ⚠️ Hardware Limitation — Serial2 RX Buffer (64 bytes)
+
+The ATmega2560's hardware UART RX buffer is **64 bytes**. Any message written to the serial port that exceeds 64 bytes is silently truncated when the Arduino main loop is briefly busy (telemetry TX, SPI reads), which corrupts the JSON and causes the command to be silently ignored.
+
+`server.js` strips the `timestamp` field before every serial write, sending only `{"event":{...}}`. This keeps all message types well within the limit. **Do not add fields to serial-bound messages without verifying the resulting byte count stays below 64.**
+
+---
+
 ## Sending commands to the tank
 
 ```bash
