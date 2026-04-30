@@ -394,6 +394,7 @@ void loop() {
   // ── Receive from RPi (commands + system events) ───────────────────────────
   while (Serial2.available()) {
     char c = (char)Serial2.read();
+    Serial.write(c);  // DEBUG: echo every byte to USB serial so we can see what arrives
     if (c == '\n') {
       handleSerialLine(cmdBuffer);
       cmdBuffer = "";
