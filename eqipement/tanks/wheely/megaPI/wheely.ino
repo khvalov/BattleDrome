@@ -47,7 +47,7 @@ bool rpiConnected = false;
 
 // ── RFID reader ────────────────────────────────────────────────────────────────
 const uint8_t RST_PIN = 30;
-const uint8_t SS_PIN  = 7;
+const uint8_t SS_PIN  = 22;  // pin 7 is in megaPi_slots[1] — conflicts with motor control
 MFRC522 rfid(SS_PIN, RST_PIN);  // Uses SPI: MOSI=51, MISO=50, SCK=52
 
 const unsigned long RFID_COOLDOWN_MS = 5000;  // min ms between same-card events
@@ -329,10 +329,14 @@ void handleSerialLine(const String& line) {
   // ── system ────────────────────────────────────────────────────────────────
   } else if (strcmp(type, "system") == 0) {
     const char* action = ev["action"] | "";
-    if (strcmp(action, "connected") == 0 && !rpiConnected) {
+    // Accept either "connected" (first boot) or "heartbeat" (already running).
+    // The Arduino can miss the one-shot "connected" if it reboots while the
+    // RPi is already up; heartbeats arrive every 5 s and act as a fallback.
+    if ((strcmp(action, "connected") == 0 || strcmp(action, "heartbeat") == 0)
+        && !rpiConnected) {
       rpiConnected = true;
       updateHealthLed();  // health=100 → green
-      Serial.println("[SYS] RPi connected — LEDs → health mode");
+      Serial.println("[SYS] RPi alive — LEDs → health mode");
     }
   }
 }
