@@ -16,7 +16,12 @@ function getLocalIP() {
 }
 
 // ── Serial port ────────────────────────────────────────────────────────────────
-const serial = new SerialPort({ path: '/dev/ttyS0', baudRate: 115200 });
+// /dev/serial0 is the system symlink to whichever UART is wired to GPIO14/15.
+// On RPi Zero W with enable_uart=1 in /boot/config.txt this resolves to the
+// stable PL011 UART (/dev/ttyAMA0). Without that flag it resolves to the
+// mini UART (/dev/ttyS0) whose TX baud rate drifts with the CPU clock and
+// causes the Arduino to reject incoming bytes.
+const serial = new SerialPort({ path: '/dev/serial0', baudRate: 115200 });
 const parser = serial.pipe(new ReadlineParser({ delimiter: '\r\n' }));
 
 // ── MQTT ───────────────────────────────────────────────────────────────────────
@@ -48,12 +53,45 @@ function buildEvent(type, action = null, value = null) {
   };
 }
 
-function sendSerial(payload) {
-  const json = JSON.stringify(payload);
-  serial.write(json + '\r\n', (err) => {
-    if (err) console.error('Serial write error:', err.message);
+// ATmega2560 Serial2 hardware RX buffer is 64 bytes.  Any line (including the
+// trailing \r\n) that exceeds this is silently truncated when the Arduino main
+// loop is briefly busy, corrupting the JSON and causing the command to be ignored.
+const SERIAL_MAX_BYTES = 64;
+
+// Minify a JSON string (re-parse + re-stringify strips all whitespace),
+// size-check it against the hardware limit, then write to Serial2.
+// Drops the message with a console error if it would overflow the buffer.
+function writeToSerial(json) {
+  // Minify: re-parse → re-stringify removes spaces, tabs, newlines
+  let compact;
+  try {
+    compact = JSON.stringify(JSON.parse(json));
+  } catch {
+    // Fallback: manually strip whitespace if the input isn't valid JSON
+    compact = json.replace(/\s+/g, '');
+  }
+
+  const line     = compact + '\r\n';
+  const byteSize = Buffer.byteLength(line, 'utf8');
+
+  if (byteSize > SERIAL_MAX_BYTES) {
+    console.error(
+      `[SERIAL] DROP — ${byteSize} bytes exceeds ${SERIAL_MAX_BYTES}-byte ` +
+      `hardware RX buffer: ${compact}`
+    );
+    return;
+  }
+
+  serial.write(line, (err) => {
+    if (err) console.error('[SERIAL] write error:', err.message);
   });
-  console.log('Serial sent:', json);
+  console.log(`[SERIAL] sent (${byteSize}B):`, compact);
+}
+
+function sendSerial(payload) {
+  // Send only the event object — Arduino never reads the timestamp,
+  // and omitting it keeps every message well within SERIAL_MAX_BYTES.
+  writeToSerial(JSON.stringify({ event: payload.event }));
 }
 
 function publishMqtt(payload) {
@@ -105,13 +143,17 @@ mqttClient.on('connect', () => {
 
 mqttClient.on('message', (topic, message) => {
   if (topic !== COMMAND_TOPIC) return;
-  // Forward command from MQTT to Arduino via serial
-  const raw = message.toString().trim();
-  console.log('Command received, forwarding to Arduino:', raw);
-  serial.write(raw + '\r\n', (err) => {
-    if (err) console.error('Serial write error:', err.message);
-    else      console.log('Serial write OK');
-  });
+  // Extract only the event object before forwarding — Arduino never reads
+  // the timestamp, and omitting it keeps the line within SERIAL_MAX_BYTES.
+  let json;
+  try {
+    const parsed = JSON.parse(message.toString());
+    json = JSON.stringify({ event: parsed.event });
+  } catch {
+    json = message.toString();
+  }
+  console.log('[SERIAL] forwarding command:', json);
+  writeToSerial(json);
 });
 
 mqttClient.on('error', (err) => {

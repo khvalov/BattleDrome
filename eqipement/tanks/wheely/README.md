@@ -220,15 +220,18 @@ Held in memory on the Arduino. Updated at runtime via `command` messages receive
 
 ### Remote commands
 
-Send a `command` JSON to the tank's MQTT commands topic — the Raspberry Pi forwards it to `Serial2`:
+Send a `command` JSON to the tank's MQTT commands topic — the Raspberry Pi strips the timestamp and forwards `{"event":{...}}` to `Serial2`:
 
 ```json
-{ "timestamp": 0, "event": { "type": "command", "param": "health", "value": 80 } }
+{ "event": { "type": "command", "param": "health", "value": 80 } }
 ```
 
 Valid `param` values: `health`, `ammo`, `ammoLevel`, `fireSpeed`, `immunable`, `maxSpeed`, `minSpeed`.
 
 Values are clamped via `constrain()`. `immunable` is boolean (`0` = false, any non-zero = true).
+
+> **⚠️ Serial2 RX buffer — 64 bytes hard limit**
+> The ATmega2560 hardware UART RX buffer is 64 bytes. Messages longer than 64 bytes are silently truncated when the main loop is briefly busy, corrupting the JSON. The RPi bridge always omits `timestamp` before writing to serial so every message stays within this limit. Do not add fields to serial-bound messages without checking the byte count.
 
 ---
 

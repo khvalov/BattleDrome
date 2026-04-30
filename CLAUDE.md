@@ -89,3 +89,21 @@ Valid `param` values: `health`, `ammo`, `ammoLevel`, `fireSpeed`, `immunable`.
 - Heartbeat interval: 5 s; offline timeout: 15 s
 - Serial baud (both ends): 115200
 - RPi HTTP health port: 3000 | Dashboard port: 8080
+
+## ⚠️ Hardware Limitation — Serial2 RX Buffer (64 bytes)
+
+The ATmega2560's hardware UART RX buffer for `Serial2` is **64 bytes**. When the Arduino main loop is briefly busy (sending telemetry, SPI communication with RFID/PS2), incoming bytes accumulate in this buffer. Any message longer than 64 bytes that arrives during a busy window is silently truncated, producing a JSON parse error.
+
+**Rule:** every message written by the RPi bridge to Serial2 **must be ≤ 64 bytes**.
+
+The RPi bridge (`server.js`) enforces this by sending only `{"event":{...}}` — omitting the `timestamp` field — before writing to serial. The Arduino never reads `timestamp` from incoming messages, so no functional data is lost.
+
+Measured sizes for current message types (bytes including `\r\n`):
+
+| Message | Bytes |
+|---|---|
+| `pong` | 54 |
+| `connected` | 59 |
+| `command` (longest param `fireSpeed`) | 59 |
+
+Do **not** add fields to serial-bound messages without re-checking the byte count. The MQTT payloads (tank → server direction) are not affected — those travel Arduino TX → RPi RX and can be any length.
