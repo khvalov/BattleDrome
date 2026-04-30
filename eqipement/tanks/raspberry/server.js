@@ -54,7 +54,11 @@ function buildEvent(type, action = null, value = null) {
 }
 
 function sendSerial(payload) {
-  const json = JSON.stringify(payload);
+  // Send only the event object — Arduino never reads the timestamp and the
+  // ATmega2560 Serial2 RX hardware buffer is only 64 bytes. A full payload
+  // with a 10-digit Unix timestamp exceeds 64 bytes and gets silently truncated,
+  // causing JSON parse errors. Stripping the timestamp keeps every message ≤ 58 bytes.
+  const json = JSON.stringify({ event: payload.event });
   serial.write(json + '\r\n', (err) => {
     if (err) console.error('Serial write error:', err.message);
   });
@@ -110,10 +114,18 @@ mqttClient.on('connect', () => {
 
 mqttClient.on('message', (topic, message) => {
   if (topic !== COMMAND_TOPIC) return;
-  // Forward command from MQTT to Arduino via serial
-  const raw = message.toString().trim();
-  console.log('Command received, forwarding to Arduino:', raw);
-  serial.write(raw + '\r\n', (err) => {
+  // Strip the timestamp before forwarding to Arduino — the ATmega2560 Serial2
+  // RX buffer is only 64 bytes, and the full payload (timestamp + event) exceeds
+  // that, causing truncation and JSON parse errors. Arduino only reads event.*.
+  let toSend;
+  try {
+    const parsed = JSON.parse(message.toString());
+    toSend = JSON.stringify({ event: parsed.event });
+  } catch {
+    toSend = message.toString().trim();
+  }
+  console.log('Command received, forwarding to Arduino:', toSend);
+  serial.write(toSend + '\r\n', (err) => {
     if (err) console.error('Serial write error:', err.message);
     else      console.log('Serial write OK');
   });
