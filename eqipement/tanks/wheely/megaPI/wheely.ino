@@ -78,6 +78,14 @@ unsigned long lastPing = 0;
 unsigned long lastFireTime   = 0;
 bool          squarePrevious = false;
 
+// ── LED blink state ────────────────────────────────────────────────────────────
+// Non-blocking: driven by updateBlink() in loop().
+// 2 blinks = 4 half-periods (on→off→on→off); after done, restores health colour.
+const unsigned long BLINK_INTERVAL_MS = 100;
+uint8_t       blinkSteps = 0;       // remaining half-periods; 0 = idle
+uint8_t       blinkR, blinkG, blinkB;
+unsigned long blinkLast  = 0;
+
 // ── Command buffer (Serial2 ← RPi) ────────────────────────────────────────────
 String cmdBuffer = "";
 
@@ -273,6 +281,28 @@ void updateHealthLed() {
   else                  setAllLeds(180,   0,   0);  // red
 }
 
+// ── LED blink ──────────────────────────────────────────────────────────────────
+// Kick off a 2-blink sequence in the chosen colour.
+// updateBlink() must be called every loop() tick to advance the animation.
+void startBlink(uint8_t r, uint8_t g, uint8_t b) {
+  blinkR = r; blinkG = g; blinkB = b;
+  blinkSteps = 4;   // 4 half-periods = 2 full blinks
+  blinkLast  = millis() - BLINK_INTERVAL_MS;  // fire first step immediately
+}
+
+void updateBlink(unsigned long now) {
+  if (blinkSteps == 0) return;
+  if (now - blinkLast < BLINK_INTERVAL_MS) return;
+  blinkLast = now;
+
+  // Odd remaining steps → colour on; even → off
+  if (blinkSteps % 2 == 0) setAllLeds(0, 0, 0);
+  else                      setAllLeds(blinkR, blinkG, blinkB);
+
+  blinkSteps--;
+  if (blinkSteps == 0) updateHealthLed();  // restore correct health colour when done
+}
+
 // ── Serial handler (commands + system events from RPi) ────────────────────────
 void handleSerialLine(const String& line) {
   StaticJsonDocument<256> doc;
@@ -291,7 +321,13 @@ void handleSerialLine(const String& line) {
     const char* param = ev["param"] | "";
     int value = ev["value"] | 0;
 
-    if      (strcmp(param, "health")    == 0) { health    = constrain(value, 0, 100); updateHealthLed(); }
+    if      (strcmp(param, "health")    == 0) {
+      int prev = health;
+      health = constrain(value, 0, 100);
+      if      (health < prev) startBlink(180, 0,   0);  // hit  → red blink
+      else if (health > prev) startBlink(0,   180, 0);  // heal → green blink
+      else                    updateHealthLed();          // no change, just refresh
+    }
     else if (strcmp(param, "ammo")      == 0)   ammo      = constrain(value, 0, 100);
     else if (strcmp(param, "ammoLevel") == 0)   ammoLevel = constrain(value, 1, 10);
     else if (strcmp(param, "fireSpeed") == 0)   fireSpeed = constrain(value, 1, 10);
@@ -351,6 +387,9 @@ void setup() {
 // ── Loop ───────────────────────────────────────────────────────────────────────
 void loop() {
   unsigned long now = millis();
+
+  // ── LED blink animation ────────────────────────────────────────────────────
+  updateBlink(now);
 
   // ── Receive from RPi (commands + system events) ───────────────────────────
   while (Serial2.available()) {
