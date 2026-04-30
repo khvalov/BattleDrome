@@ -35,16 +35,20 @@ Each tank appears as a card with:
 
 | Stat | Bar range | Colour |
 |:---|:---|:---|
-| Speed | 0–255 | Blue |
+| Speed | 0–maxSpeed | Blue |
 | Health | 0–100 | Green |
 | Ammo | 0–100 | Yellow |
 | Ammo Level | 1–10 | Amber |
 | Fire Speed | 1–10 | Red-orange |
+| Max Speed | 0–255 | Teal |
+| Min Speed | 0–255 | Dark teal |
 | Immune | badge (YES / NO) | Green / grey |
 
 Cards gain a green border and pulse animation when a tank comes online, and fade when offline.
 
-Below the tank grid, a **Telemetry Log** panel shows all incoming MQTT messages in raw JSON format — newest first, colour-coded by event type (`fire` = orange, `telemetry` = blue, `system` = green, `error` = red, `rfid` = same orange as fire). Keeps the last 100 entries. Has a Clear button.
+**Tank display name:** click the ✎ pencil icon on any card to set a custom display name (shown instead of the raw hostname). The raw ID is shown as a small grey label alongside. The name is stored server-side only — never sent to the tank hardware.
+
+Below the tank grid, a **Telemetry Log** panel shows all incoming MQTT messages in raw JSON format — newest first, colour-coded by event type (`fire` = orange-red, `telemetry` = blue, `system` = green, `error` = red, `rfid` = amber). Keeps the last 100 entries. Has a Clear button.
 
 ---
 
@@ -58,24 +62,60 @@ mosquitto_pub -h broker.hivemq.com \
   -m '{"timestamp":0,"event":{"type":"command","param":"health","value":80}}'
 ```
 
-Valid `param` values: `health`, `ammo`, `ammoLevel`, `fireSpeed`, `immunable`.
+Valid `param` values: `health`, `ammo`, `ammoLevel`, `fireSpeed`, `immunable`, `maxSpeed`, `minSpeed`.
+
+---
+
+## REST API
+
+### RFID action rules
+
+| Method | Path | Body | Description |
+|:---|:---|:---|:---|
+| `GET` | `/api/rfid` | — | Return all configured rules |
+| `POST` | `/api/rfid` | `{ uid, action, recipient, value }` | Add or update a rule |
+| `DELETE` | `/api/rfid/:uid` | — | Remove a rule |
+
+### Tank display name
+
+| Method | Path | Body | Description |
+|:---|:---|:---|:---|
+| `PATCH` | `/api/tanks/:id` | `{ displayName }` | Set custom display name (server-only) |
+
+Send `{ displayName: "" }` to clear back to the raw hostname.
 
 ---
 
 ## RFID action table
 
-Edit the `RFID_ACTIONS` object at the top of `server/index.js` to assign effects to physical tags:
+Rules are managed at runtime via the dashboard UI or the REST API above.
 
-```js
-const RFID_ACTIONS = {
-  'A1B2C3D4': { param: 'health',    value: 100 },  // Medkit
-  'B2C3D4E5': { param: 'ammo',      value: 100 },  // Ammo crate
-  'C3D4E5F6': { param: 'immunable', value: 1   },  // Shield
-  'D4E5F6A7': { param: 'fireSpeed', value: 1   },  // Nitro
-};
-```
+### Schema
 
-UIDs are uppercase hex strings with no spaces (e.g. `A1B2C3D4`). Use the dashboard telemetry log to discover unknown tag UIDs — they appear as `rfid` events. When a known UID is scanned the server logs the match and immediately publishes the configured `command` to the tank.
+| Field | Type | Values |
+|:---|:---|:---|
+| `uid` | string | Uppercase hex, e.g. `A1B2C3D4` |
+| `action` | string | `ammo` · `health` · `speed` · `immune` · `maxspeed` · `minspeed` · `win` |
+| `recipient` | string | `tank` · `others` · `teammate` · `all` |
+| `value` | number | Delta applied to current value (positive = increase, negative = decrease) |
+
+### Action mapping
+
+| Action | Arduino param | Range |
+|:---|:---|:---|
+| `ammo` | `ammo` | 0–100 |
+| `health` | `health` | 0–100 |
+| `speed` | `fireSpeed` | 1–10 |
+| `immune` | `immunable` | boolean (>0 = enable) |
+| `maxspeed` | `maxSpeed` | 1–255 |
+| `minspeed` | `minSpeed` | 0–255 |
+| `win` | *(broadcast only)* | — |
+
+The server reads the tank's current telemetry value, adds the delta, clamps to the valid range, and sends the resulting absolute value as a `command`.
+
+### Win action
+
+When a `win` rule fires, the server broadcasts `{ type: "win", tankId, recipient }` to all connected browsers. A full-screen victory overlay appears with a contextual message. No command is sent to the tank.
 
 ---
 

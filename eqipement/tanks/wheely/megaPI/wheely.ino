@@ -32,19 +32,25 @@ int minSpeed = 20;   // minimum PWM when moving — overridable via RFID/command
 const int DEADZONE = 20;
 
 // ── IR blaster ─────────────────────────────────────────────────────────────────
-const int IR_TX_PIN = 3;  // ← Set to your IR LED data pin
+// NEC protocol: addr = XOR-fold of TANK_ID bytes, command = ammoLevel
+const uint8_t IR_PIN = A12;  // = pin 66 on ATmega2560
 
-// ── Health LED (MeRGBLed / WS2812, 2×2 matrix on pin A14) ────────────────────
-// MeRGBLed is bundled with MeMegaPi — no separate install needed.
-// Colour zones:  health > 50 → green | 5–50 → yellow | < 5 → red
-MeRGBLed healthLed;
+// ── Health LEDs (MeRGBLed / WS2812 2×2, pins A14 and A13) ───────────────────
+// Both LEDs mirror the same colour.
+// Boot:          yellow  (waiting for RPi)
+// RPi connected: switches to health-based colour
+// health > 50 → green | 5–50 → yellow | < 5 → red
+MeRGBLed led1;  // A14
+MeRGBLed led2;  // A13
+
+bool rpiConnected = false;
 
 // ── RFID reader ────────────────────────────────────────────────────────────────
 const uint8_t RST_PIN = 30;
-const uint8_t SS_PIN  = 22;
+const uint8_t SS_PIN  = 7;
 MFRC522 rfid(SS_PIN, RST_PIN);  // Uses SPI: MOSI=51, MISO=50, SCK=52
 
-const unsigned long RFID_COOLDOWN_MS = 3000;  // min ms between same-card events
+const unsigned long RFID_COOLDOWN_MS = 5000;  // min ms between same-card events
 String        lastRfidUid  = "";
 unsigned long lastRfidTime = 0;
 
@@ -65,6 +71,14 @@ unsigned long lastTelemetry = 0;
 // ── Fire control ───────────────────────────────────────────────────────────────
 unsigned long lastFireTime   = 0;
 bool          squarePrevious = false;
+
+// ── LED blink state ────────────────────────────────────────────────────────────
+// Non-blocking: driven by updateBlink() in loop().
+// 2 blinks = 4 half-periods (on→off→on→off); after done, restores health colour.
+const unsigned long BLINK_INTERVAL_MS = 100;
+uint8_t       blinkSteps = 0;       // remaining half-periods; 0 = idle
+uint8_t       blinkR, blinkG, blinkB;
+unsigned long blinkLast  = 0;
 
 // ── Command buffer (Serial2 ← RPi) ────────────────────────────────────────────
 String cmdBuffer = "";
@@ -119,15 +133,47 @@ void mecanumDrive(float lx, float ly, float rx) {
   speedRR = abs(rearRight);
 }
 
-// ── IR blaster ─────────────────────────────────────────────────────────────────
+// ── IR blaster — NEC protocol ──────────────────────────────────────────────────
+// Carrier ~38 kHz via software toggle (11 µs high + 11 µs low ≈ 45 kHz;
+// most IR receivers accept 36–40 kHz, so this works in practice).
+
+void markIR(uint16_t us) {
+  unsigned long t = micros();
+  while ((micros() - t) < us) {
+    digitalWrite(IR_PIN, HIGH);
+    delayMicroseconds(11);
+    digitalWrite(IR_PIN, LOW);
+    delayMicroseconds(11);
+  }
+}
+
+void spaceIR(uint16_t us) {
+  digitalWrite(IR_PIN, LOW);
+  delayMicroseconds(us);
+}
+
+// Sends one 32-bit NEC frame: leader + 32 bits LSB-first + stop pulse.
+// addr    — 8-bit sender address (XOR-fold of TANK_ID)
+// cmd     — 8-bit command (ammoLevel here)
+void sendNEC(uint8_t addr, uint8_t cmd) {
+  uint32_t data = ((uint32_t)addr)              |
+                  ((uint32_t)(addr ^ 0xFF) << 8) |
+                  ((uint32_t)cmd           << 16)|
+                  ((uint32_t)(cmd  ^ 0xFF) << 24);
+  markIR(9000);   // 9 ms leader mark
+  spaceIR(4500);  // 4.5 ms leader space
+  for (int i = 0; i < 32; i++) {
+    markIR(560);
+    spaceIR(((data >> i) & 1) ? 1690 : 560);
+  }
+  markIR(560);    // stop bit
+}
+
 void fireIR() {
-  // TODO: replace with actual IR library call, e.g.:
-  //   uint32_t payload = encodeShot(TANK_ID, ammoLevel);
-  //   irsend.sendNEC(payload, 32);
-  // Placeholder: single pulse on IR_TX_PIN
-  digitalWrite(IR_TX_PIN, HIGH);
-  delayMicroseconds(600);
-  digitalWrite(IR_TX_PIN, LOW);
+  // Derive a stable 8-bit address from TANK_ID (XOR of each ASCII byte).
+  uint8_t addr = 0;
+  for (uint8_t i = 0; TANK_ID[i]; i++) addr ^= (uint8_t)TANK_ID[i];
+  sendNEC(addr, (uint8_t)ammoLevel);
 }
 
 // ── RFID ───────────────────────────────────────────────────────────────────────
@@ -208,60 +254,107 @@ void sendFireEvent() {
   Serial2.print("\r\n");
 }
 
-// ── Command handler ────────────────────────────────────────────────────────────
-void handleCommand(const String& line) {
-  // Buffer must hold the raw JSON copy (~79 bytes) + node overhead (~80 bytes).
-  // 128 is too small → DeserializationError::NoMemory → commands silently ignored.
+// ── LEDs ───────────────────────────────────────────────────────────────────────
+void setAllLeds(uint8_t r, uint8_t g, uint8_t b) {
+  led1.setColor(r, g, b); led1.show();
+  led2.setColor(r, g, b); led2.show();
+}
+
+// Called on every health update and on RPi connect.
+// No-op until rpiConnected — startup colour is handled in setup().
+void updateHealthLed() {
+  if (!rpiConnected) return;
+  if      (health > 50) setAllLeds(0,   180,   0);  // green
+  else if (health >= 5) setAllLeds(180, 140,   0);  // yellow
+  else                  setAllLeds(180,   0,   0);  // red
+}
+
+// ── LED blink ──────────────────────────────────────────────────────────────────
+// Kick off a 2-blink sequence in the chosen colour.
+// updateBlink() must be called every loop() tick to advance the animation.
+void startBlink(uint8_t r, uint8_t g, uint8_t b) {
+  blinkR = r; blinkG = g; blinkB = b;
+  blinkSteps = 4;   // 4 half-periods = 2 full blinks
+  blinkLast  = millis() - BLINK_INTERVAL_MS;  // fire first step immediately
+}
+
+void updateBlink(unsigned long now) {
+  if (blinkSteps == 0) return;
+  if (now - blinkLast < BLINK_INTERVAL_MS) return;
+  blinkLast = now;
+
+  // Odd remaining steps → colour on; even → off
+  if (blinkSteps % 2 == 0) setAllLeds(0, 0, 0);
+  else                      setAllLeds(blinkR, blinkG, blinkB);
+
+  blinkSteps--;
+  if (blinkSteps == 0) updateHealthLed();  // restore correct health colour when done
+}
+
+// ── Serial handler (commands + system events from RPi) ────────────────────────
+void handleSerialLine(const String& line) {
   StaticJsonDocument<256> doc;
   DeserializationError err = deserializeJson(doc, line);
   if (err != DeserializationError::Ok) {
-    Serial.print("[CMD] JSON error: "); Serial.println(err.c_str());
+    Serial.print("[UART] JSON error: "); Serial.println(err.c_str());
     return;
   }
 
   JsonObject ev = doc["event"];
-  if (!ev || strcmp(ev["type"] | "", "command") != 0) return;
+  if (!ev) return;
+  const char* type = ev["type"] | "";
 
-  const char* param = ev["param"] | "";
-  int value = ev["value"] | 0;
+  // ── command ────────────────────────────────────────────────────────────────
+  if (strcmp(type, "command") == 0) {
+    const char* param = ev["param"] | "";
+    int value = ev["value"] | 0;
 
-  if      (strcmp(param, "health")    == 0) { health    = constrain(value, 0, 100); updateHealthLed(); }
-  else if (strcmp(param, "ammo")      == 0)   ammo      = constrain(value, 0, 100);
-  else if (strcmp(param, "ammoLevel") == 0)   ammoLevel = constrain(value, 1, 10);
-  else if (strcmp(param, "fireSpeed") == 0)   fireSpeed = constrain(value, 1, 10);
-  else if (strcmp(param, "immunable") == 0)   immunable = (value != 0);
-  else if (strcmp(param, "maxSpeed")  == 0)   maxSpeed  = constrain(value, 1, 255);
-  else if (strcmp(param, "minSpeed")  == 0)   minSpeed  = constrain(value, 0, 255);
+    if      (strcmp(param, "health")    == 0) {
+      int prev = health;
+      health = constrain(value, 0, 100);
+      if      (health < prev) startBlink(180, 0,   0);  // hit  → red blink
+      else if (health > prev) startBlink(0,   180, 0);  // heal → green blink
+      else                    updateHealthLed();          // no change, just refresh
+    }
+    else if (strcmp(param, "ammo")      == 0)   ammo      = constrain(value, 0, 100);
+    else if (strcmp(param, "ammoLevel") == 0)   ammoLevel = constrain(value, 1, 10);
+    else if (strcmp(param, "fireSpeed") == 0)   fireSpeed = constrain(value, 1, 10);
+    else if (strcmp(param, "immunable") == 0)   immunable = (value != 0);
+    else if (strcmp(param, "maxSpeed")  == 0)   maxSpeed  = constrain(value, 1, 255);
+    else if (strcmp(param, "minSpeed")  == 0)   minSpeed  = constrain(value, 0, 255);
 
-  Serial.print("[CMD] "); Serial.print(param);
-  Serial.print(" = "); Serial.println(value);
-}
+    Serial.print("[CMD] "); Serial.print(param);
+    Serial.print(" = "); Serial.println(value);
 
-// ── Health LED ─────────────────────────────────────────────────────────────────
-// Uses MeRGBLed (bundled with MeMegaPi). setColor(r,g,b) sets all pixels at once.
-// index=0 in setColor(index,r,g,b) would also set all; we use the 3-arg form.
-void updateHealthLed() {
-  if      (health > 50) healthLed.setColor(0,   180,   0);  // green
-  else if (health >= 5) healthLed.setColor(180, 140,   0);  // yellow
-  else                  healthLed.setColor(180,   0,   0);  // red (critical / dead)
-  healthLed.show();
+  // ── system ────────────────────────────────────────────────────────────────
+  } else if (strcmp(type, "system") == 0) {
+    const char* action = ev["action"] | "";
+    if (strcmp(action, "connected") == 0 && !rpiConnected) {
+      rpiConnected = true;
+      updateHealthLed();  // health=100 → green
+      Serial.println("[SYS] RPi connected — LEDs → health mode");
+    }
+  }
 }
 
 // ── Setup ──────────────────────────────────────────────────────────────────────
 void setup() {
   Serial.begin(115200);   // USB debug
   Serial2.begin(115200);  // Raspberry Pi via flex cable UART
-  pinMode(IR_TX_PIN, OUTPUT);
-  digitalWrite(IR_TX_PIN, LOW);
 
-  // Health LED — MeRGBLed on pin A14 (= pin 68 on ATmega2560), 4 pixels
-  healthLed.setpin(A14);
-  healthLed.setNumber(4);
-  updateHealthLed();  // show green at boot (health starts at 100)
+  // IR blaster
+  pinMode(IR_PIN, OUTPUT);
+  digitalWrite(IR_PIN, LOW);
+
+  // Health LEDs — both yellow while waiting for RPi
+  led1.setpin(A14); led1.setNumber(4);
+  led2.setpin(A13); led2.setNumber(4);
+  setAllLeds(180, 140, 0);  // yellow = not yet connected
 
   SPI.begin();
   rfid.PCD_Init();
-  Serial.print("RFID reader ready. Tank: "); Serial.println(TANK_ID);
+  Serial.print("RFID ready. SS_PIN="); Serial.print(SS_PIN);
+  Serial.print("  Tank: "); Serial.println(TANK_ID);
 
   TCCR1A = _BV(WGM10);
   TCCR1B = _BV(CS11) | _BV(WGM12);
@@ -277,11 +370,14 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
-  // ── Receive commands from RPi ──────────────────────────────────────────────
+  // ── LED blink animation ────────────────────────────────────────────────────
+  updateBlink(now);
+
+  // ── Receive from RPi (commands + system events) ───────────────────────────
   while (Serial2.available()) {
     char c = (char)Serial2.read();
     if (c == '\n') {
-      handleCommand(cmdBuffer);
+      handleSerialLine(cmdBuffer);
       cmdBuffer = "";
     } else if (c != '\r') {
       cmdBuffer += c;
@@ -306,7 +402,7 @@ void loop() {
   bool squareNow = MePS2.ButtonPressed(MeJOYSTICK_SQUARE);
   if (squareNow && !squarePrevious) {
     if (ammo > 0 && (now - lastFireTime >= (unsigned long)fireSpeed)) {
-      fireIR();
+      fireIR();             // send NEC frame: addr=TANK_ID hash, cmd=ammoLevel
       ammo--;
       lastFireTime = now;
       sendFireEvent();

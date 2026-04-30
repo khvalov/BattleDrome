@@ -25,9 +25,10 @@ Wheely is an omnidirectional mobile platform based on the **mBot Mega** architec
 | 2 | **DC Motor Drivers** | Dual-channel drivers for all 4 motors |
 | 1 | **Bluetooth Module** | Wireless remote control (PS2 protocol) |
 | 4 | **Encoder DC Motors** | High-torque motors for precision movement |
-| 2 | **RGB LED Modules** | Status indicators |
+| 2 | **WS2812 2×2 LED matrices** | Health / status indicators (MeRGBLed, pins A14 and A13) |
 | 1 | **Raspberry Pi Zero** | Network bridge to MQTT |
-| 1 | **MFRC522 RFID reader** | SPI RFID card reader (RST=pin 30, SS=pin 22) |
+| 1 | **MFRC522 RFID reader** | SPI RFID card reader (RST=pin 30, SS=pin 7) |
+| 1 | **IR LED** | Firing transmitter (pin A12) |
 
 ### Building Components
 
@@ -59,7 +60,7 @@ UART uses **`Serial2`** on the ATmega2560 at **115200 baud** — this is the har
 **File:** `megaPI/wheely.ino`
 
 **Required libraries** (install via Arduino Library Manager):
-- `MeMegaPi` — Makeblock motor drivers
+- `MeMegaPi` — Makeblock motor drivers; also bundles `MeRGBLed` for WS2812 LEDs
 - `MePS2` — PS2 Bluetooth controller
 - `ArduinoJson` by Benoit Blanchon
 - `MFRC522` by Miguel Balboa — RFID reader
@@ -82,25 +83,32 @@ UART uses **`Serial2`** on the ATmega2560 at **115200 baud** — this is the har
 | PORT_9 | Rear-Left | −1 (reversed) |
 | PORT_1 | Rear-Right | +1 (normal) |
 
-Deadzone: **20 units** | Max PWM: **255**
+Deadzone: **20 units**
+
+### Speed limits
+
+Both limits are runtime-mutable via `command` messages or RFID actions.
+
+| Variable | Default | Range | Description |
+|:---|:---|:---|:---|
+| `maxSpeed` | 160 | 1–255 | Motor PWM cap |
+| `minSpeed` | 20 | 0–255 | Motor PWM floor when moving |
 
 ### RFID reader
 
 | Constant | Value | Description |
 |:---|:---|:---|
 | `RST_PIN` | `30` | MFRC522 reset pin |
-| `SS_PIN` | `22` | MFRC522 SPI slave-select pin |
-| `RFID_COOLDOWN_MS` | `3000` | Min ms before the same UID triggers again |
+| `SS_PIN` | `7` | MFRC522 SPI slave-select pin |
+| `RFID_COOLDOWN_MS` | `5000` | Min ms before the same UID triggers again |
 
-Uses hardware SPI (MOSI=51, MISO=50, SCK=52 on ATmega2560). When a card is detected the firmware reads the UID, applies the 3 s debounce, and sends an `rfid` event over `Serial2`:
+Uses hardware SPI (MOSI=51, MISO=50, SCK=52 on ATmega2560). When a card is detected the firmware reads the UID, applies the 5 s debounce, and sends an `rfid` event over `Serial2`:
 
 ```json
 { "timestamp": 1234, "event": { "type": "rfid", "data": { "tankId": "WHLYA1", "tankType": "wheely", "uid": "A1B2C3D4" } } }
 ```
 
 The Raspberry Pi enriches the event with `ip` and `hostname` before publishing to MQTT. The central server then looks up the UID in its `RFID_ACTIONS` table and sends a `command` back if a match is found.
-
-Required library: **MFRC522** by Miguel Balboa (Arduino Library Manager).
 
 ### Tank settings
 
@@ -110,7 +118,7 @@ Defined as constants at the top of `wheely.ino`:
 |:---|:---|:---|
 | `TANK_ID` | `"WHLYA1"` | Unique identifier, up to 6 characters |
 | `TANK_TYPE` | `"wheely"` | Tank model name |
-| `IR_TX_PIN` | `3` | IR LED data pin — change to match your wiring |
+| `IR_PIN` | `A12` | IR LED data pin (= pin 66 on ATmega2560) |
 
 ### Firing (Square button)
 
@@ -119,13 +127,45 @@ Pressing the **Square** button triggers a shot if:
 - Time since last shot ≥ `fireSpeed` ms
 
 On each shot the firmware:
-1. Pulses `IR_TX_PIN` (placeholder — replace with your IR library call)
+1. Transmits a **NEC IR frame** on `IR_PIN` (38 kHz software carrier)
+   - Address byte: XOR-fold of `TANK_ID` ASCII bytes (identifies the shooter)
+   - Command byte: current `ammoLevel` (damage level)
 2. Decrements `ammo` by 1
 3. Immediately sends a `fire` event over `Serial2`
 
-The IR packet encodes `TANK_ID` and `ammoLevel` so the receiving tank can identify the attacker and calculate damage.
+> **Note:** Button detection uses `MePS2.ButtonPressed(MeJOYSTICK_SQUARE)`. Rising-edge logic (one shot per press) is handled in firmware with `squarePrevious`.
 
-> **Note:** Button detection uses `MePS2.ButtonPressed(MeJOYSTICK_SQUARE)`. Both the method name and constant come from the official Makeblock library header (`MePS2.h`). Rising-edge logic (one shot per press) is handled in firmware with `squarePrevious`.
+### Health LED matrices
+
+Two **WS2812 2×2 LED matrices** (4 pixels each) driven by `MeRGBLed` (bundled with `MeMegaPi`).
+
+| Pin | Role |
+|:---|:---|
+| A14 (= pin 68) | `led1` |
+| A13 (= pin 67) | `led2` |
+
+Both matrices always show the same colour.
+
+**Boot sequence:**
+
+| State | Colour |
+|:---|:---|
+| Startup (waiting for RPi) | 🟡 Yellow |
+| RPi sends `system/connected` over UART | 🟢 Green (switches to health mode) |
+
+**Health colours (active after RPi connects):**
+
+| Health | Colour |
+|:---|:---|
+| > 50 | 🟢 Green |
+| 5 – 50 | 🟡 Yellow |
+| < 5 (critical / dead) | 🔴 Red |
+
+**Hit / heal blink:**  
+When health is updated by a `command`:
+- **Decreased** → both matrices blink **red** twice (non-blocking, 100 ms per flash)
+- **Increased** → both matrices blink **green** twice
+- After blinking, the correct health colour is restored automatically
 
 ### Telemetry
 
@@ -139,7 +179,8 @@ Every **500 ms** the firmware sends a `telemetry` packet over `Serial2`. The Ras
     "data": {
       "tankId": "WHLYA1", "tankType": "wheely",
       "speed": 127, "health": 100, "ammo": 99,
-      "ammoLevel": 3, "fireSpeed": 5, "immunable": false
+      "ammoLevel": 3, "fireSpeed": 5, "immunable": false,
+      "maxSpeed": 160, "minSpeed": 20
     }
   }
 }
@@ -174,6 +215,8 @@ Held in memory on the Arduino. Updated at runtime via `command` messages receive
 | `ammoLevel` | 3 | 1–10 | Ammo power / damage multiplier |
 | `fireSpeed` | 5 | 1–10 | Minimum ms between shots |
 | `immunable` | false | bool | Immune to damage |
+| `maxSpeed` | 160 | 1–255 | Motor PWM cap |
+| `minSpeed` | 20 | 0–255 | Motor PWM floor when moving |
 
 ### Remote commands
 
@@ -182,6 +225,8 @@ Send a `command` JSON to the tank's MQTT commands topic — the Raspberry Pi for
 ```json
 { "timestamp": 0, "event": { "type": "command", "param": "health", "value": 80 } }
 ```
+
+Valid `param` values: `health`, `ammo`, `ammoLevel`, `fireSpeed`, `immunable`, `maxSpeed`, `minSpeed`.
 
 Values are clamped via `constrain()`. `immunable` is boolean (`0` = false, any non-zero = true).
 
