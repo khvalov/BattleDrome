@@ -49,6 +49,190 @@ const PARAM_RANGE = {
 
 const VALID_ACTIONS    = ['ammo', 'health', 'speed', 'immune', 'maxspeed', 'minspeed', 'win'];
 const VALID_RECIPIENTS = ['tank', 'others', 'teammate', 'all'];
+const VALID_MODES      = ['free_play', 'ctf_teams', 'ctf_solo', 'treasure_hunt', 'race'];
+
+// ── Game state ─────────────────────────────────────────────────────────────────
+// Modes:
+//   free_play     — no rules, just RFID_ACTIONS table applies
+//   ctf_teams     — teams capture each other's home RFID bases
+//   ctf_solo      — each tank has a home RFID; capture opponents' bases
+//   treasure_hunt — all configured RFIDs are treasures worth points + optional artifact
+//   race          — tanks race to hit checkpoints; first to each scores a point
+//
+// status: idle → running → ended
+const game = {
+  mode:             'free_play',
+  status:           'idle',     // idle | running | ended
+  timeLimit:        240,        // seconds; 0 = no limit
+  timeRemaining:    0,
+  scoreTarget:      0,          // 0 = no score-based win condition
+  scores:           {},         // { id: number }  — tankId or teamId depending on mode
+  teams:            {},         // { teamId: { name, color, homeUid, tankIds[] } }
+  bases:            {},         // { uid: tankId }  — ctf_solo home bases
+  treasures:        {},         // { uid: { label, points, action, actionValue } }
+  checkpoints:      [],         // [uid, ...]  — ordered for race
+  takenCheckpoints: {},         // { uid: tankId }  — race: who took each checkpoint first
+};
+
+let gameTimer = null;
+
+function gameSnapshot() {
+  return {
+    mode:             game.mode,
+    status:           game.status,
+    timeLimit:        game.timeLimit,
+    timeRemaining:    game.timeRemaining,
+    scoreTarget:      game.scoreTarget,
+    scores:           { ...game.scores },
+    teams:            JSON.parse(JSON.stringify(game.teams)),
+    bases:            { ...game.bases },
+    treasures:        JSON.parse(JSON.stringify(game.treasures)),
+    checkpoints:      [...game.checkpoints],
+    takenCheckpoints: { ...game.takenCheckpoints },
+  };
+}
+
+function broadcastGame(msgType = 'game_update', extra = {}) {
+  broadcast({ type: msgType, game: gameSnapshot(), ...extra });
+}
+
+function startRound() {
+  if (game.status === 'running') return false;
+  game.status           = 'running';
+  game.scores           = {};
+  game.takenCheckpoints = {};
+  clearInterval(gameTimer);
+  gameTimer = null;
+
+  if (game.timeLimit > 0) {
+    game.timeRemaining = game.timeLimit;
+    gameTimer = setInterval(() => {
+      game.timeRemaining = Math.max(0, game.timeRemaining - 1);
+      broadcast({ type: 'game_tick', timeRemaining: game.timeRemaining });
+      if (game.timeRemaining <= 0) endRound('time_up');
+    }, 1000);
+  } else {
+    game.timeRemaining = 0;
+  }
+
+  broadcastGame();
+  console.log(`[GAME] Round started — mode: ${game.mode}, timeLimit: ${game.timeLimit}s, scoreTarget: ${game.scoreTarget}`);
+  return true;
+}
+
+function endRound(reason) {
+  if (game.status !== 'running') return;
+  clearInterval(gameTimer);
+  gameTimer = null;
+  game.status = 'ended';
+  console.log(`[GAME] Round ended — reason: ${reason}`);
+  broadcastGame('game_end', { reason });
+}
+
+function resetRound() {
+  clearInterval(gameTimer);
+  gameTimer = null;
+  game.status           = 'idle';
+  game.timeRemaining    = 0;
+  game.scores           = {};
+  game.takenCheckpoints = {};
+  broadcastGame();
+  console.log('[GAME] Round reset');
+}
+
+function addScore(id, delta) {
+  game.scores[id] = (game.scores[id] || 0) + delta;
+}
+
+function getTeamOfTank(tankId) {
+  for (const [teamId, team] of Object.entries(game.teams)) {
+    if ((team.tankIds || []).includes(tankId)) return { teamId, team };
+  }
+  return null;
+}
+
+// Returns true if the game mode handled this RFID scan (prevents fallthrough to RFID_ACTIONS).
+function handleGameRfid(scannerTankId, uid) {
+  if (game.status !== 'running') return false;
+  switch (game.mode) {
+    case 'ctf_teams':     return handleCtfTeams(scannerTankId, uid);
+    case 'ctf_solo':      return handleCtfSolo(scannerTankId, uid);
+    case 'treasure_hunt': return handleTreasureHunt(scannerTankId, uid);
+    case 'race':          return handleRace(scannerTankId, uid);
+    default:              return false;  // free_play: fall through to RFID_ACTIONS
+  }
+}
+
+function handleCtfTeams(scannerTankId, uid) {
+  // Find which team owns this home base
+  let homeTeamId = null;
+  for (const [teamId, team] of Object.entries(game.teams)) {
+    if ((team.homeUid || '').toUpperCase() === uid) { homeTeamId = teamId; break; }
+  }
+  if (!homeTeamId) return false; // not a registered home base → fall through
+
+  const scannerInfo = getTeamOfTank(scannerTankId);
+  if (!scannerInfo) return true; // scanner has no team → consume event, no score
+
+  if (scannerInfo.teamId === homeTeamId) {
+    console.log(`[GAME] CTF Teams: ${scannerTankId} scanned own base — no capture`);
+    return true;
+  }
+
+  addScore(scannerInfo.teamId, 1);
+  console.log(`[GAME] CTF Teams: ${scannerInfo.teamId} captured ${homeTeamId}'s base! Score: ${game.scores[scannerInfo.teamId]}`);
+  broadcastGame();
+  return true;
+}
+
+function handleCtfSolo(scannerTankId, uid) {
+  const ownerTankId = game.bases[uid];
+  if (!ownerTankId) return false; // not a registered base → fall through
+
+  if (ownerTankId === scannerTankId) {
+    console.log(`[GAME] CTF Solo: ${scannerTankId} scanned own base — no capture`);
+    return true;
+  }
+
+  addScore(scannerTankId, 1);
+  console.log(`[GAME] CTF Solo: ${scannerTankId} captured ${ownerTankId}'s base! Score: ${game.scores[scannerTankId]}`);
+  broadcastGame();
+  return true;
+}
+
+function handleTreasureHunt(scannerTankId, uid) {
+  const treasure = game.treasures[uid];
+  if (!treasure) return false; // not a registered treasure → fall through
+
+  const pts = Number(treasure.points) || 0;
+  addScore(scannerTankId, pts);
+  console.log(`[GAME] Treasure: ${scannerTankId} collected ${uid} (+${pts} pts). Total: ${game.scores[scannerTankId]}`);
+
+  // Apply artifact effect if configured
+  if (treasure.action && treasure.action !== 'none') {
+    applyRfidAction(scannerTankId, { action: treasure.action, recipient: 'tank', value: treasure.actionValue || 0 });
+  }
+
+  const reachedTarget = game.scoreTarget > 0 && game.scores[scannerTankId] >= game.scoreTarget;
+  broadcastGame();
+  if (reachedTarget) endRound('score_target');
+  return true;
+}
+
+function handleRace(scannerTankId, uid) {
+  if (!game.checkpoints.includes(uid)) return false; // not a checkpoint → fall through
+  if (game.takenCheckpoints[uid]) return true;        // already taken → consume, no score
+
+  game.takenCheckpoints[uid] = scannerTankId;
+  addScore(scannerTankId, 1);
+  console.log(`[GAME] Race: ${scannerTankId} hit checkpoint ${uid}. Score: ${game.scores[scannerTankId]}`);
+
+  const allTaken      = game.checkpoints.every(cp => game.takenCheckpoints[cp]);
+  const reachedTarget = game.scoreTarget > 0 && game.scores[scannerTankId] >= game.scoreTarget;
+  broadcastGame();
+  if (allTaken || reachedTarget) endRound(reachedTarget ? 'score_target' : 'all_checkpoints');
+  return true;
+}
 
 // ── Tank state ─────────────────────────────────────────────────────────────────
 const tanks = {};
@@ -157,12 +341,16 @@ mqttClient.on('message', (topic, raw) => {
     const uid = (payload.event.data.uid || '').toUpperCase();
     console.log(`[RFID] Tank ${tankId} scanned UID: ${uid}`);
 
-    const entry = RFID_ACTIONS[uid];
-    if (entry) {
-      console.log(`[RFID] UID ${uid} → action:`, entry);
-      applyRfidAction(tankId, entry);
-    } else {
-      console.log(`[RFID] UID ${uid} — no action configured`);
+    // Game mode handler takes priority; fall back to RFID_ACTIONS if not consumed
+    const handledByGame = handleGameRfid(tankId, uid);
+    if (!handledByGame) {
+      const entry = RFID_ACTIONS[uid];
+      if (entry) {
+        console.log(`[RFID] UID ${uid} → action:`, entry);
+        applyRfidAction(tankId, entry);
+      } else {
+        console.log(`[RFID] UID ${uid} — no action configured`);
+      }
     }
   }
 
@@ -204,6 +392,142 @@ const httpServer = http.createServer(async (req, res) => {
   if (req.method === 'GET' && (url === '/' || url === '/index.html')) {
     res.writeHead(200, { 'Content-Type': 'text/html' });
     res.end(fs.readFileSync(indexHtml));
+    return;
+  }
+
+  // ── Game API ───────────────────────────────────────────────────────────────
+
+  if (req.method === 'GET' && url === '/api/game') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(gameSnapshot()));
+    return;
+  }
+
+  if (req.method === 'PATCH' && url === '/api/game') {
+    let body;
+    try { body = await readBody(req); } catch { res.writeHead(400); res.end('Bad JSON'); return; }
+    if (game.status !== 'running') {
+      if (body.mode !== undefined && VALID_MODES.includes(body.mode)) game.mode = body.mode;
+      if (body.timeLimit !== undefined)  game.timeLimit   = Math.max(0, Number(body.timeLimit)  || 0);
+      if (body.scoreTarget !== undefined) game.scoreTarget = Math.max(0, Number(body.scoreTarget) || 0);
+    }
+    broadcastGame();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/api/game/start') {
+    const ok = startRound();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok }));
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/api/game/stop') {
+    endRound('manual');
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/api/game/reset') {
+    resetRound();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  // Teams
+  if (url.startsWith('/api/game/teams/')) {
+    const teamId = decodeURIComponent(url.slice('/api/game/teams/'.length));
+
+    if (req.method === 'PUT') {
+      let body;
+      try { body = await readBody(req); } catch { res.writeHead(400); res.end(); return; }
+      game.teams[teamId] = {
+        name:    String(body.name    || teamId),
+        color:   String(body.color   || '#888888'),
+        homeUid: String(body.homeUid || '').toUpperCase(),
+        tankIds: Array.isArray(body.tankIds) ? body.tankIds : [],
+      };
+      broadcastGame();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      delete game.teams[teamId];
+      delete game.scores[teamId];
+      broadcastGame();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+  }
+
+  // CTF Solo bases
+  if (url.startsWith('/api/game/bases/')) {
+    const uid = decodeURIComponent(url.slice('/api/game/bases/'.length)).toUpperCase();
+
+    if (req.method === 'PUT') {
+      let body;
+      try { body = await readBody(req); } catch { res.writeHead(400); res.end(); return; }
+      game.bases[uid] = String(body.tankId || '');
+      broadcastGame();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      delete game.bases[uid];
+      broadcastGame();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+  }
+
+  // Treasures
+  if (url.startsWith('/api/game/treasures/')) {
+    const uid = decodeURIComponent(url.slice('/api/game/treasures/'.length)).toUpperCase();
+
+    if (req.method === 'PUT') {
+      let body;
+      try { body = await readBody(req); } catch { res.writeHead(400); res.end(); return; }
+      game.treasures[uid] = {
+        label:       String(body.label       || uid),
+        points:      Number(body.points)      || 0,
+        action:      String(body.action       || 'none'),
+        actionValue: Number(body.actionValue) || 0,
+      };
+      broadcastGame();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      delete game.treasures[uid];
+      broadcastGame();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+  }
+
+  // Race checkpoints (full list replacement)
+  if (req.method === 'PUT' && url === '/api/game/checkpoints') {
+    let body;
+    try { body = await readBody(req); } catch { res.writeHead(400); res.end(); return; }
+    game.checkpoints = Array.isArray(body.uids)
+      ? body.uids.map(u => String(u).toUpperCase())
+      : [];
+    broadcastGame();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
     return;
   }
 
@@ -279,6 +603,7 @@ wss.on('connection', (ws) => {
   clients.add(ws);
   ws.send(JSON.stringify({ type: 'update', tanks: snapshot() }));
   ws.send(JSON.stringify({ type: 'rfid_actions', actions: RFID_ACTIONS }));
+  ws.send(JSON.stringify({ type: 'game_update', game: gameSnapshot() }));
   ws.on('close', () => clients.delete(ws));
   ws.on('error', () => clients.delete(ws));
 });
