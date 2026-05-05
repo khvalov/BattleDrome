@@ -193,13 +193,14 @@
       100% { box-shadow: 0 0 0 14px rgba(63,185,80,0); }
     }
 
-    /* ── Shared section header ── */
+    /* ── Shared section ── */
     .section { margin-top: 2.5rem; }
     .section-header {
       display: flex;
       align-items: center;
-      gap: 1rem;
+      gap: 0.75rem;
       margin-bottom: 0.75rem;
+      flex-wrap: wrap;
     }
     .section-header h2 {
       font-size: 0.85rem;
@@ -221,13 +222,189 @@
       letter-spacing: 0.05em;
     }
     .btn:hover { border-color: #8b949e; color: #e6edf3; }
-    .btn.btn-primary {
-      border-color: #58a6ff; color: #58a6ff;
-    }
+    .btn.btn-primary { border-color: #58a6ff; color: #58a6ff; }
     .btn.btn-primary:hover { background: #58a6ff22; }
+    .btn.btn-success { border-color: #3fb950; color: #3fb950; }
+    .btn.btn-success:hover { background: #3fb95022; }
     .btn.btn-danger  { border-color: #f8514944; color: #f85149; }
     .btn.btn-danger:hover  { background: #f8514922; }
     .btn.btn-ml { margin-left: auto; }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    .sub-header {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #484f58;
+      margin-bottom: 0.6rem;
+      margin-top: 1rem;
+    }
+
+    /* ── Game section ── */
+    #game-section {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      padding: 1.25rem;
+    }
+
+    .game-status-badge {
+      font-size: 0.72rem;
+      padding: 0.2rem 0.65rem;
+      border-radius: 999px;
+      font-weight: bold;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .game-status-badge.status-idle    { background: #1c1c1c;  color: #484f58;  border: 1px solid #30363d; }
+    .game-status-badge.status-running { background: #1a3a1a;  color: #3fb950;  border: 1px solid #3fb950; }
+    .game-status-badge.status-ended   { background: #2d1a0f;  color: #f0883e;  border: 1px solid #f0883e; }
+
+    .game-top {
+      display: flex;
+      gap: 1.5rem;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      margin-top: 0.75rem;
+    }
+
+    .game-left { flex: 1; min-width: 0; }
+    .game-right { flex-shrink: 0; }
+
+    .game-config-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: flex-end;
+    }
+
+    .game-timer {
+      font-size: 3rem;
+      font-weight: bold;
+      letter-spacing: 0.08em;
+      color: #58a6ff;
+      font-variant-numeric: tabular-nums;
+      min-width: 6rem;
+      text-align: center;
+      line-height: 1;
+      padding: 0.4rem 0.6rem;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+    }
+    .game-timer.running { color: #3fb950; }
+    .game-timer.ending  { color: #f85149; animation: timerBlink 0.8s step-start infinite; }
+    @keyframes timerBlink { 50% { opacity: 0.3; } }
+
+    /* Scoreboard */
+    #scoreboard-wrap {
+      margin-top: 1rem;
+      background: #0d1117;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+    }
+    #scoreboard-wrap .sub-header { margin-top: 0; }
+    .score-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.35rem 0;
+      border-bottom: 1px solid #21262d;
+      font-size: 0.78rem;
+    }
+    .score-row:last-child { border-bottom: none; }
+    .score-rank   { color: #484f58; font-size: 0.65rem; min-width: 1.2rem; }
+    .score-label  { flex: 1; }
+    .score-value  { font-weight: bold; color: #58a6ff; font-size: 0.9rem; }
+    .score-value.leader { color: #f0883e; }
+    .team-color-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      display: inline-block;
+    }
+
+    /* Mode config panels */
+    .mode-config {
+      margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid #21262d;
+    }
+    .mode-config .sub-header { margin-top: 0; }
+
+    /* Teams */
+    .team-card {
+      background: #0d1117;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      padding: 0.75rem 1rem;
+      margin-bottom: 0.5rem;
+    }
+    .team-card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-bottom: 0.5rem;
+    }
+    .team-card-header strong { flex: 1; }
+    .team-uid { font-size: 0.68rem; color: #484f58; }
+    .team-tanks {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .tank-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.72rem;
+      cursor: pointer;
+      color: #8b949e;
+    }
+    .tank-checkbox input { cursor: pointer; accent-color: #58a6ff; }
+
+    /* Generic table */
+    .game-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.75rem;
+      margin-top: 0.5rem;
+    }
+    .game-table th {
+      text-align: left;
+      padding: 0.35rem 0.6rem;
+      color: #484f58;
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom: 1px solid #21262d;
+    }
+    .game-table td {
+      padding: 0.45rem 0.6rem;
+      border-bottom: 1px solid #161b22;
+      color: #c9d1d9;
+    }
+    .game-table tr:hover td { background: #161b22; }
+    .cp-badge {
+      display: inline-block;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 3px;
+      padding: 0.1rem 0.4rem;
+      font-size: 0.65rem;
+      color: #8b949e;
+      font-family: monospace;
+    }
+    .cp-taken { border-color: #3fb950; color: #3fb950; }
+    .uid-cell { font-family: monospace; color: #58a6ff; font-size: 0.72rem; }
+
+    .list-empty {
+      font-size: 0.75rem;
+      color: #484f58;
+      font-style: italic;
+      padding: 0.5rem 0;
+    }
 
     /* ── RFID section ── */
     #rfid-table-wrap {
@@ -276,6 +453,7 @@
     .action-maxspeed { background:#0d2226; color:#39c5cf; border:1px solid #39c5cf44; }
     .action-minspeed { background:#091415; color:#1b9ea8; border:1px solid #1b9ea844; }
     .action-win      { background:#2d1a0f; color:#f0883e; border:1px solid #f0883e44; }
+    .action-none     { background:#1c1c1c; color:#484f58; border:1px solid #30363d; }
 
     .recipient-badge {
       display: inline-block;
@@ -336,7 +514,13 @@
       font-size: 0.78rem;
       padding: 0.3rem 0.6rem;
       outline: none;
-      min-width: 120px;
+      min-width: 100px;
+    }
+    .form-group input[type="color"] {
+      padding: 0.1rem 0.2rem;
+      min-width: 48px;
+      height: 30px;
+      cursor: pointer;
     }
     .form-group input:focus,
     .form-group select:focus { border-color: #58a6ff; }
@@ -405,6 +589,33 @@
     #win-title   { font-size: 2.5rem; font-weight: bold; color: #f0883e; letter-spacing: 0.15em; text-transform: uppercase; }
     #win-sub     { font-size: 1rem; color: #8b949e; }
     #win-dismiss { margin-top: 0.5rem; }
+
+    /* ── Game End overlay ── */
+    #game-end-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.9);
+      z-index: 999;
+      align-items: center;
+      justify-content: center;
+    }
+    #game-end-overlay.show { display: flex; animation: winIn 0.4s ease; }
+    .game-end-box {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 12px;
+      padding: 2.5rem 3rem;
+      text-align: center;
+      max-width: 480px;
+      width: 90%;
+    }
+    .game-end-trophy   { font-size: 4rem; margin-bottom: 0.5rem; }
+    .game-end-title    { font-size: 1.8rem; font-weight: bold; color: #f0883e; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem; }
+    .game-end-reason   { font-size: 0.8rem; color: #8b949e; margin-bottom: 0.25rem; }
+    .game-end-winner   { font-size: 1rem; color: #3fb950; margin-bottom: 1.5rem; }
+    .game-end-scores   { text-align: left; border-top: 1px solid #21262d; padding-top: 1rem; margin-bottom: 1.5rem; }
+    .game-end-scores .score-row { font-size: 0.82rem; }
   </style>
 </head>
 <body>
@@ -416,6 +627,155 @@
 
 <div id="no-tanks">Waiting for tanks to come online&hellip;</div>
 <div id="grid"></div>
+
+<!-- ── Game Control ───────────────────────────────────────────────────────────── -->
+<div class="section">
+<div id="game-section">
+  <div class="section-header">
+    <h2>&#127918; Game</h2>
+    <span id="game-status-badge" class="game-status-badge status-idle">IDLE</span>
+    <button class="btn btn-success" id="btn-game-start">&#9654; Start</button>
+    <button class="btn btn-danger"  id="btn-game-stop"  style="display:none">&#9632; Stop</button>
+    <button class="btn" id="btn-game-reset">&#8634; Reset</button>
+  </div>
+
+  <div class="game-top">
+    <div class="game-left">
+      <!-- Config row -->
+      <div class="game-config-row">
+        <div class="form-group">
+          <label>Mode</label>
+          <select id="game-mode">
+            <option value="free_play">Free Play</option>
+            <option value="ctf_teams">CTF &mdash; Teams</option>
+            <option value="ctf_solo">CTF &mdash; Solo</option>
+            <option value="treasure_hunt">Treasure Hunt</option>
+            <option value="race">Race</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Time Limit (min, 0=&#8734;)</label>
+          <input id="game-time-limit" type="number" min="0" step="1" value="4" style="max-width:80px" />
+        </div>
+        <div class="form-group" id="score-target-grp">
+          <label>Score Target (0=off)</label>
+          <input id="game-score-target" type="number" min="0" value="0" style="max-width:80px" />
+        </div>
+        <div class="form-group" style="justify-content:flex-end">
+          <button class="btn btn-primary" id="btn-game-config-save">Apply</button>
+        </div>
+      </div>
+
+      <!-- Scoreboard -->
+      <div id="scoreboard-wrap" style="display:none">
+        <div class="sub-header">Scoreboard</div>
+        <div id="scoreboard"></div>
+      </div>
+    </div>
+
+    <div class="game-right">
+      <div class="game-timer" id="game-timer">--:--</div>
+    </div>
+  </div>
+
+  <!-- ── CTF Teams config ── -->
+  <div class="mode-config" id="config-ctf-teams" style="display:none">
+    <div class="sub-header">Teams</div>
+    <div class="form-row" style="margin-bottom:0.75rem">
+      <div class="form-group">
+        <label>Team Name</label>
+        <input id="team-name" type="text" placeholder="Red Team" style="min-width:130px" />
+      </div>
+      <div class="form-group">
+        <label>Color</label>
+        <input id="team-color" type="color" value="#f85149" />
+      </div>
+      <div class="form-group">
+        <label>Home UID</label>
+        <input id="team-home-uid" type="text" placeholder="AABBCCDD" style="text-transform:uppercase;min-width:130px" />
+      </div>
+      <div class="form-group" style="justify-content:flex-end">
+        <button class="btn btn-primary" id="btn-add-team">Add Team</button>
+      </div>
+    </div>
+    <div id="teams-list"></div>
+  </div>
+
+  <!-- ── CTF Solo config ── -->
+  <div class="mode-config" id="config-ctf-solo" style="display:none">
+    <div class="sub-header">Home Bases</div>
+    <div class="form-row" style="margin-bottom:0.75rem">
+      <div class="form-group">
+        <label>Tank</label>
+        <select id="base-tank-select" style="min-width:160px"></select>
+      </div>
+      <div class="form-group">
+        <label>Home UID</label>
+        <input id="base-uid" type="text" placeholder="AABBCCDD" style="text-transform:uppercase;min-width:130px" />
+      </div>
+      <div class="form-group" style="justify-content:flex-end">
+        <button class="btn btn-primary" id="btn-add-base">Assign Base</button>
+      </div>
+    </div>
+    <div id="bases-list"></div>
+  </div>
+
+  <!-- ── Treasure Hunt config ── -->
+  <div class="mode-config" id="config-treasure-hunt" style="display:none">
+    <div class="sub-header">Treasures</div>
+    <div class="form-row" style="margin-bottom:0.75rem">
+      <div class="form-group">
+        <label>UID</label>
+        <input id="treasure-uid" type="text" placeholder="AABBCCDD" style="text-transform:uppercase;min-width:120px" />
+      </div>
+      <div class="form-group">
+        <label>Label</label>
+        <input id="treasure-label" type="text" placeholder="Gold chest" style="min-width:120px" />
+      </div>
+      <div class="form-group">
+        <label>Points</label>
+        <input id="treasure-points" type="number" value="10" min="0" style="max-width:70px" />
+      </div>
+      <div class="form-group">
+        <label>Artifact</label>
+        <select id="treasure-action">
+          <option value="none">None</option>
+          <option value="health">Health</option>
+          <option value="ammo">Ammo</option>
+          <option value="speed">Fire Speed</option>
+          <option value="immune">Immune</option>
+          <option value="maxspeed">Max Speed</option>
+        </select>
+      </div>
+      <div class="form-group" id="treasure-av-grp">
+        <label>Value</label>
+        <input id="treasure-action-value" type="number" value="20" style="max-width:70px" />
+      </div>
+      <div class="form-group" style="justify-content:flex-end">
+        <button class="btn btn-primary" id="btn-add-treasure">Add Treasure</button>
+      </div>
+    </div>
+    <div id="treasures-list"></div>
+  </div>
+
+  <!-- ── Race config ── -->
+  <div class="mode-config" id="config-race" style="display:none">
+    <div class="sub-header">Checkpoints</div>
+    <p style="font-size:0.72rem;color:#484f58;margin-bottom:0.6rem">Tanks score a point for each checkpoint they hit first. Order is displayed only.</p>
+    <div class="form-row" style="margin-bottom:0.75rem">
+      <div class="form-group">
+        <label>UID</label>
+        <input id="cp-uid" type="text" placeholder="AABBCCDD" style="text-transform:uppercase;min-width:130px" />
+      </div>
+      <div class="form-group" style="justify-content:flex-end">
+        <button class="btn btn-primary" id="btn-add-cp">Add Checkpoint</button>
+      </div>
+    </div>
+    <div id="checkpoints-list"></div>
+  </div>
+
+</div><!-- #game-section -->
+</div>
 
 <!-- ── RFID Actions ─────────────────────────────────────────────────────────── -->
 <div class="section" id="rfid-section">
@@ -499,12 +859,26 @@
   <button class="btn" id="win-dismiss">Dismiss</button>
 </div>
 
+<!-- ── Game End overlay ──────────────────────────────────────────────────────── -->
+<div id="game-end-overlay">
+  <div class="game-end-box">
+    <div class="game-end-trophy">&#127942;</div>
+    <div class="game-end-title" id="game-end-title">Round Over!</div>
+    <div class="game-end-reason" id="game-end-reason"></div>
+    <div class="game-end-winner" id="game-end-winner"></div>
+    <div class="game-end-scores" id="game-end-scores"></div>
+    <button class="btn" id="btn-game-end-dismiss">Dismiss</button>
+  </div>
+</div>
+
 <script>
   const grid    = document.getElementById('grid');
   const noTanks = document.getElementById('no-tanks');
   const badge   = document.getElementById('connection-badge');
 
   let ws;
+  window._lastTanks = [];
+  window._gameState = null;
 
   function connect() {
     ws = new WebSocket(`ws://${location.host}`);
@@ -516,6 +890,9 @@
       if (msg.type === 'log')          appendLog(msg);
       if (msg.type === 'rfid_actions') renderRfidTable(msg.actions);
       if (msg.type === 'win')          showWin(msg);
+      if (msg.type === 'game_update')  { window._gameState = msg.game; applyGameState(msg.game); }
+      if (msg.type === 'game_tick')    updateTimerDisplay(msg.timeRemaining);
+      if (msg.type === 'game_end')     { window._gameState = msg.game; applyGameState(msg.game); showGameEnd(msg.game, msg.reason); }
     };
   }
 
@@ -529,6 +906,18 @@
 
   function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function formatTime(seconds) {
+    if (seconds <= 0) return '00:00';
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+  }
+
+  function tankDisplayName(tankId) {
+    const t = (window._lastTanks || []).find(t => t.id === tankId);
+    return t?.displayName || tankId;
   }
 
   // ── Tank cards ───────────────────────────────────────────────────────────────
@@ -552,7 +941,6 @@
     const immunable = t.immunable ?? false;
     const maxSpeed  = t.maxSpeed  ?? 160;
     const minSpeed  = t.minSpeed  ?? '—';
-    // Speed bar is capped at the current maxSpeed limit
     const speedMax  = t.maxSpeed  ?? 255;
     const bars = `
       ${barHtml('Speed',    'bar-speed',     speed     === '—' ? 0 : speed,     speedMax)}
@@ -588,8 +976,6 @@
       card.className = `tank-card ${tank.online ? 'online' : 'offline'}`;
       if (tank.lastSeen) card.dataset.lastSeen = tank.lastSeen;
 
-      // If a rename input inside this card is focused, only update the telemetry
-      // section so the user isn't kicked out of the input field mid-typing.
       if (card.querySelector('.rename-input') === document.activeElement) {
         const tel = card.querySelector('.telemetry');
         if (tel) tel.innerHTML = telemetryHtml(tank.telemetry);
@@ -603,7 +989,7 @@
           <div class="status-dot"></div>
           <span class="tank-name" id="name-${escHtml(tank.id)}">${escHtml(displayName)}</span>
           ${showIdLabel}
-          <button class="btn-rename" title="Rename" onclick="startRename('${escHtml(tank.id)}')">✎</button>
+          <button class="btn-rename" title="Rename" onclick="startRename('${escHtml(tank.id)}')">&#9998;</button>
           <span class="tank-status-label">${tank.online ? 'ONLINE' : 'OFFLINE'}</span>
         </div>
         <div class="tank-meta">${tank.lastSeen ? `Last seen: ${timeSince(tank.lastSeen)}` : ''}</div>
@@ -614,6 +1000,9 @@
         card.addEventListener('animationend', () => card.classList.remove('pulse'), { once: true });
       }
     }
+
+    // Refresh CTF Solo tank selector and CTF Teams tank checkboxes
+    refreshTankSelectors();
   }
 
   setInterval(() => {
@@ -623,10 +1012,447 @@
     }
   }, 5000);
 
+  // ── Game Control ─────────────────────────────────────────────────────────────
+  const gameStatusBadge = document.getElementById('game-status-badge');
+  const gameTimer       = document.getElementById('game-timer');
+  const btnStart        = document.getElementById('btn-game-start');
+  const btnStop         = document.getElementById('btn-game-stop');
+  const btnReset        = document.getElementById('btn-game-reset');
+  const gameMode        = document.getElementById('game-mode');
+  const gameTimeLimit   = document.getElementById('game-time-limit');
+  const gameScoreTarget = document.getElementById('game-score-target');
+  const scoreTargetGrp  = document.getElementById('score-target-grp');
+  const scoreboardWrap  = document.getElementById('scoreboard-wrap');
+  const scoreboard      = document.getElementById('scoreboard');
+
+  const MODE_LABELS = {
+    free_play:     'Free Play',
+    ctf_teams:     'CTF — Teams',
+    ctf_solo:      'CTF — Solo',
+    treasure_hunt: 'Treasure Hunt',
+    race:          'Race',
+  };
+
+  const REASON_LABELS = {
+    time_up:         "Time's Up!",
+    score_target:    'Score Target Reached!',
+    all_checkpoints: 'All Checkpoints Taken!',
+    manual:          'Round Stopped',
+  };
+
+  // Mode that hides config panels
+  const MODE_CONFIG_PANELS = {
+    ctf_teams:     'config-ctf-teams',
+    ctf_solo:      'config-ctf-solo',
+    treasure_hunt: 'config-treasure-hunt',
+    race:          'config-race',
+  };
+
+  function applyGameState(g) {
+    // Status badge
+    gameStatusBadge.textContent = g.status.toUpperCase();
+    gameStatusBadge.className   = `game-status-badge status-${g.status}`;
+
+    // Buttons
+    const running = g.status === 'running';
+    btnStart.style.display = running ? 'none' : '';
+    btnStop.style.display  = running ? ''     : 'none';
+    btnStart.disabled = g.status === 'running';
+
+    // Config fields — disable while running
+    const locked = g.status === 'running';
+    gameMode.disabled        = locked;
+    gameTimeLimit.disabled   = locked;
+    gameScoreTarget.disabled = locked;
+    document.getElementById('btn-game-config-save').disabled = locked;
+
+    // Sync selects to server state (only if not user-focused)
+    if (document.activeElement !== gameMode)        gameMode.value        = g.mode;
+    if (document.activeElement !== gameTimeLimit)   gameTimeLimit.value   = Math.round(g.timeLimit / 60);
+    if (document.activeElement !== gameScoreTarget) gameScoreTarget.value = g.scoreTarget;
+
+    // Timer
+    if (g.status === 'idle') {
+      gameTimer.textContent = g.timeLimit > 0 ? formatTime(g.timeLimit) : '&#8734;';
+      gameTimer.className   = 'game-timer';
+    } else {
+      updateTimerDisplay(g.timeRemaining, g.timeLimit);
+    }
+
+    // Mode config panels
+    for (const [mode, panelId] of Object.entries(MODE_CONFIG_PANELS)) {
+      const el = document.getElementById(panelId);
+      if (el) el.style.display = g.mode === mode ? '' : 'none';
+    }
+
+    // Score target group: only for treasure_hunt and race
+    scoreTargetGrp.style.display = (g.mode === 'treasure_hunt' || g.mode === 'race') ? '' : 'none';
+
+    // Scoreboard
+    const hasScores = Object.keys(g.scores).length > 0 || g.status !== 'idle';
+    const isCompetitive = g.mode !== 'free_play';
+    scoreboardWrap.style.display = (isCompetitive && (hasScores || g.status !== 'idle')) ? '' : 'none';
+    if (isCompetitive) renderScoreboard(g);
+
+    // Mode-specific config renders
+    renderTeams(g.teams);
+    renderBases(g.bases);
+    renderTreasures(g.treasures);
+    renderCheckpoints(g.checkpoints, g.takenCheckpoints);
+    refreshTankSelectors();
+  }
+
+  function updateTimerDisplay(timeRemaining, timeLimit) {
+    if (window._gameState?.status !== 'running' && window._gameState?.status !== 'ended') return;
+    const tl = timeLimit ?? window._gameState?.timeLimit ?? 0;
+    if (tl === 0) {
+      gameTimer.textContent = '&#8734;';
+      gameTimer.className = 'game-timer running';
+      return;
+    }
+    gameTimer.textContent = formatTime(timeRemaining);
+    if      (timeRemaining <= 0)  gameTimer.className = 'game-timer ending';
+    else if (timeRemaining <= 30) gameTimer.className = 'game-timer ending';
+    else                          gameTimer.className = 'game-timer running';
+  }
+
+  function renderScoreboard(g) {
+    let rows = [];
+
+    if (g.mode === 'ctf_teams') {
+      rows = Object.entries(g.teams).map(([teamId, team]) => ({
+        label: team.name,
+        color: team.color,
+        score: g.scores[teamId] || 0,
+      }));
+    } else {
+      // Gather all scoring participants (tanks in scores, plus all known tanks with 0)
+      const knownIds = new Set([
+        ...Object.keys(g.scores),
+        ...(window._lastTanks || []).map(t => t.id),
+      ]);
+      rows = [...knownIds].map(id => ({
+        label: tankDisplayName(id),
+        color: null,
+        score: g.scores[id] || 0,
+      }));
+    }
+
+    rows.sort((a, b) => b.score - a.score);
+    const maxScore = rows[0]?.score || 0;
+
+    if (!rows.length) {
+      scoreboard.innerHTML = '<div class="list-empty">No scores yet</div>';
+      return;
+    }
+
+    scoreboard.innerHTML = rows.map((r, i) => `
+      <div class="score-row">
+        <span class="score-rank">${i + 1}.</span>
+        ${r.color ? `<span class="team-color-dot" style="background:${escHtml(r.color)}"></span>` : ''}
+        <span class="score-label">${escHtml(r.label)}</span>
+        <span class="score-value ${r.score === maxScore && maxScore > 0 ? 'leader' : ''}">${r.score}</span>
+      </div>`).join('');
+  }
+
+  // ── Game config save ──────────────────────────────────────────────────────────
+  document.getElementById('btn-game-config-save').addEventListener('click', async () => {
+    const mode        = gameMode.value;
+    const timeLimitS  = Math.max(0, Number(gameTimeLimit.value) || 0) * 60;
+    const scoreTarget = Math.max(0, Number(gameScoreTarget.value) || 0);
+    await fetch('/api/game', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode, timeLimit: timeLimitS, scoreTarget }),
+    });
+  });
+
+  btnStart.addEventListener('click', () => fetch('/api/game/start', { method: 'POST' }));
+  btnStop.addEventListener('click',  () => fetch('/api/game/stop',  { method: 'POST' }));
+  btnReset.addEventListener('click', () => fetch('/api/game/reset', { method: 'POST' }));
+
+  // ── CTF Teams ─────────────────────────────────────────────────────────────────
+  function renderTeams(teams) {
+    const el = document.getElementById('teams-list');
+    const entries = Object.entries(teams);
+    if (!entries.length) {
+      el.innerHTML = '<div class="list-empty">No teams yet. Add one above.</div>';
+      return;
+    }
+    const tanksArr = window._lastTanks || [];
+    el.innerHTML = entries.map(([teamId, team]) => `
+      <div class="team-card" data-team-id="${escHtml(teamId)}">
+        <div class="team-card-header">
+          <span class="team-color-dot" style="background:${escHtml(team.color)}"></span>
+          <strong>${escHtml(team.name)}</strong>
+          <span class="team-uid">&#127968; ${team.homeUid ? escHtml(team.homeUid) : '<em style="color:#484f58">no base</em>'}</span>
+          <button class="btn btn-danger" style="padding:0.1rem 0.4rem;font-size:0.65rem" onclick="deleteTeam('${escHtml(teamId)}')">&#128465;</button>
+        </div>
+        <div class="team-tanks">
+          ${tanksArr.length === 0
+            ? '<span class="list-empty">No tanks online</span>'
+            : tanksArr.map(t => `
+              <label class="tank-checkbox">
+                <input type="checkbox" value="${escHtml(t.id)}"
+                  ${(team.tankIds || []).includes(t.id) ? 'checked' : ''}
+                  onchange="toggleTankInTeam('${escHtml(teamId)}', '${escHtml(t.id)}', this.checked)" />
+                ${escHtml(t.displayName || t.id)}
+              </label>`).join('')
+          }
+        </div>
+      </div>`).join('');
+  }
+
+  let _teamIdCounter = Date.now();
+  document.getElementById('btn-add-team').addEventListener('click', async () => {
+    const name    = document.getElementById('team-name').value.trim();
+    const color   = document.getElementById('team-color').value;
+    const homeUid = document.getElementById('team-home-uid').value.trim().toUpperCase();
+    if (!name) { alert('Enter a team name'); return; }
+    const teamId = `team_${_teamIdCounter++}`;
+    await fetch(`/api/game/teams/${encodeURIComponent(teamId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, color, homeUid, tankIds: [] }),
+    });
+    document.getElementById('team-name').value    = '';
+    document.getElementById('team-home-uid').value = '';
+  });
+
+  async function deleteTeam(teamId) {
+    await fetch(`/api/game/teams/${encodeURIComponent(teamId)}`, { method: 'DELETE' });
+  }
+
+  async function toggleTankInTeam(teamId, tankId, checked) {
+    const team = window._gameState?.teams?.[teamId];
+    if (!team) return;
+    const tankIds = [...(team.tankIds || [])];
+    if (checked  && !tankIds.includes(tankId)) tankIds.push(tankId);
+    if (!checked) { const idx = tankIds.indexOf(tankId); if (idx !== -1) tankIds.splice(idx, 1); }
+    await fetch(`/api/game/teams/${encodeURIComponent(teamId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...team, tankIds }),
+    });
+  }
+
+  // ── CTF Solo ──────────────────────────────────────────────────────────────────
+  function renderBases(bases) {
+    const el = document.getElementById('bases-list');
+    const entries = Object.entries(bases);
+    if (!entries.length) {
+      el.innerHTML = '<div class="list-empty">No home bases assigned yet.</div>';
+      return;
+    }
+    el.innerHTML = `
+      <table class="game-table">
+        <thead><tr><th>UID</th><th>Tank</th><th></th></tr></thead>
+        <tbody>
+          ${entries.map(([uid, tankId]) => `
+            <tr>
+              <td class="uid-cell">${escHtml(uid)}</td>
+              <td>${escHtml(tankDisplayName(tankId))}</td>
+              <td><button class="btn btn-danger" style="padding:0.1rem 0.4rem;font-size:0.65rem"
+                onclick="deleteBase('${escHtml(uid)}')">&#128465;</button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  function refreshTankSelectors() {
+    const tanksArr = window._lastTanks || [];
+    const sel = document.getElementById('base-tank-select');
+    const prev = sel.value;
+    sel.innerHTML = tanksArr.length === 0
+      ? '<option value="">No tanks online</option>'
+      : tanksArr.map(t => `<option value="${escHtml(t.id)}">${escHtml(t.displayName || t.id)}</option>`).join('');
+    if (prev && tanksArr.some(t => t.id === prev)) sel.value = prev;
+
+    // Also re-render team tank checkboxes (they depend on _lastTanks)
+    if (window._gameState) renderTeams(window._gameState.teams || {});
+  }
+
+  document.getElementById('btn-add-base').addEventListener('click', async () => {
+    const tankId = document.getElementById('base-tank-select').value;
+    const uid    = document.getElementById('base-uid').value.trim().toUpperCase();
+    if (!tankId || !uid) { alert('Select a tank and enter a UID'); return; }
+    await fetch(`/api/game/bases/${encodeURIComponent(uid)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tankId }),
+    });
+    document.getElementById('base-uid').value = '';
+  });
+
+  async function deleteBase(uid) {
+    await fetch(`/api/game/bases/${encodeURIComponent(uid)}`, { method: 'DELETE' });
+  }
+
+  // ── Treasure Hunt ─────────────────────────────────────────────────────────────
+  function renderTreasures(treasures) {
+    const el = document.getElementById('treasures-list');
+    const entries = Object.entries(treasures);
+    if (!entries.length) {
+      el.innerHTML = '<div class="list-empty">No treasures configured yet.</div>';
+      return;
+    }
+    el.innerHTML = `
+      <table class="game-table">
+        <thead><tr><th>UID</th><th>Label</th><th>Points</th><th>Artifact</th><th></th></tr></thead>
+        <tbody>
+          ${entries.map(([uid, tr]) => `
+            <tr>
+              <td class="uid-cell">${escHtml(uid)}</td>
+              <td>${escHtml(tr.label || uid)}</td>
+              <td style="color:#f0883e;font-weight:bold">+${tr.points}</td>
+              <td>
+                ${tr.action && tr.action !== 'none'
+                  ? `<span class="action-badge action-${escHtml(tr.action)}">${escHtml(tr.action)}</span>
+                     <span style="color:#8b949e;font-size:0.68rem"> ${tr.actionValue >= 0 ? '+' : ''}${tr.actionValue}</span>`
+                  : '<span style="color:#484f58">—</span>'}
+              </td>
+              <td><button class="btn btn-danger" style="padding:0.1rem 0.4rem;font-size:0.65rem"
+                onclick="deleteTreasure('${escHtml(uid)}')">&#128465;</button></td>
+            </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  document.getElementById('treasure-action').addEventListener('change', function() {
+    document.getElementById('treasure-av-grp').style.display = this.value === 'none' ? 'none' : '';
+  });
+
+  document.getElementById('btn-add-treasure').addEventListener('click', async () => {
+    const uid         = document.getElementById('treasure-uid').value.trim().toUpperCase();
+    const label       = document.getElementById('treasure-label').value.trim();
+    const points      = Number(document.getElementById('treasure-points').value) || 0;
+    const action      = document.getElementById('treasure-action').value;
+    const actionValue = Number(document.getElementById('treasure-action-value').value) || 0;
+    if (!uid) { alert('Enter a UID'); return; }
+    await fetch(`/api/game/treasures/${encodeURIComponent(uid)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label: label || uid, points, action, actionValue }),
+    });
+    document.getElementById('treasure-uid').value   = '';
+    document.getElementById('treasure-label').value = '';
+  });
+
+  async function deleteTreasure(uid) {
+    await fetch(`/api/game/treasures/${encodeURIComponent(uid)}`, { method: 'DELETE' });
+  }
+
+  // ── Race ──────────────────────────────────────────────────────────────────────
+  function renderCheckpoints(checkpoints, takenCheckpoints) {
+    const el = document.getElementById('checkpoints-list');
+    if (!checkpoints.length) {
+      el.innerHTML = '<div class="list-empty">No checkpoints added yet.</div>';
+      return;
+    }
+    el.innerHTML = `
+      <table class="game-table">
+        <thead><tr><th>#</th><th>UID</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          ${checkpoints.map((uid, i) => {
+            const taker = takenCheckpoints?.[uid];
+            return `
+              <tr>
+                <td style="color:#484f58">${i + 1}</td>
+                <td class="uid-cell">${escHtml(uid)}</td>
+                <td>
+                  ${taker
+                    ? `<span class="cp-badge cp-taken">&#10003; ${escHtml(tankDisplayName(taker))}</span>`
+                    : '<span class="cp-badge">waiting</span>'}
+                </td>
+                <td><button class="btn btn-danger" style="padding:0.1rem 0.4rem;font-size:0.65rem"
+                  onclick="removeCheckpoint('${escHtml(uid)}')">&#128465;</button></td>
+              </tr>`;
+          }).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  document.getElementById('btn-add-cp').addEventListener('click', async () => {
+    const uid = document.getElementById('cp-uid').value.trim().toUpperCase();
+    if (!uid) { alert('Enter a UID'); return; }
+    const existing = window._gameState?.checkpoints || [];
+    if (!existing.includes(uid)) {
+      await fetch('/api/game/checkpoints', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ uids: [...existing, uid] }),
+      });
+    }
+    document.getElementById('cp-uid').value = '';
+  });
+
+  async function removeCheckpoint(uid) {
+    const existing = (window._gameState?.checkpoints || []).filter(u => u !== uid);
+    await fetch('/api/game/checkpoints', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ uids: existing }),
+    });
+  }
+
+  // ── Game End overlay ──────────────────────────────────────────────────────────
+  document.getElementById('btn-game-end-dismiss').addEventListener('click', () => {
+    document.getElementById('game-end-overlay').classList.remove('show');
+  });
+
+  function showGameEnd(g, reason) {
+    document.getElementById('game-end-title').textContent  = REASON_LABELS[reason] || 'Round Over!';
+    document.getElementById('game-end-reason').textContent = `Mode: ${MODE_LABELS[g.mode] || g.mode}`;
+
+    // Find winner(s)
+    const scores = g.scores;
+    const maxScore = Math.max(...Object.values(scores), 0);
+    let winnerText = 'No scores recorded';
+
+    if (maxScore > 0) {
+      if (g.mode === 'ctf_teams') {
+        const winners = Object.entries(g.teams)
+          .filter(([teamId]) => (scores[teamId] || 0) === maxScore)
+          .map(([, team]) => team.name);
+        winnerText = winners.length ? `&#127942; ${winners.join(' & ')}` : 'No winner';
+      } else {
+        const winnerIds = Object.entries(scores)
+          .filter(([, s]) => s === maxScore)
+          .map(([id]) => tankDisplayName(id));
+        winnerText = winnerIds.length ? `&#127942; ${winnerIds.join(' & ')}` : 'No winner';
+      }
+    }
+    document.getElementById('game-end-winner').innerHTML = winnerText;
+
+    // Final scoreboard
+    const scoresEl = document.getElementById('game-end-scores');
+    let rows = [];
+    if (g.mode === 'ctf_teams') {
+      rows = Object.entries(g.teams).map(([teamId, team]) => ({
+        label: team.name, color: team.color, score: scores[teamId] || 0,
+      }));
+    } else {
+      const allIds = new Set([
+        ...Object.keys(scores),
+        ...(window._lastTanks || []).map(t => t.id),
+      ]);
+      rows = [...allIds].map(id => ({ label: tankDisplayName(id), color: null, score: scores[id] || 0 }));
+    }
+    rows.sort((a, b) => b.score - a.score);
+    scoresEl.innerHTML = rows.map((r, i) => `
+      <div class="score-row">
+        <span class="score-rank">${i + 1}.</span>
+        ${r.color ? `<span class="team-color-dot" style="background:${escHtml(r.color)}"></span>` : ''}
+        <span class="score-label">${escHtml(r.label)}</span>
+        <span class="score-value ${r.score === maxScore && maxScore > 0 ? 'leader' : ''}">${r.score}</span>
+      </div>`).join('');
+
+    document.getElementById('game-end-overlay').classList.add('show');
+  }
+
   // ── RFID table ───────────────────────────────────────────────────────────────
   const rfidTbody = document.getElementById('rfid-tbody');
   const rfidCount = document.getElementById('rfid-count');
-  const rfidEmpty = document.getElementById('rfid-empty');
 
   function actionBadge(action) {
     return `<span class="action-badge action-${escHtml(action)}">${escHtml(action)}</span>`;
@@ -664,7 +1490,6 @@
 
   async function deleteRfid(uid) {
     await fetch(`/api/rfid/${encodeURIComponent(uid)}`, { method: 'DELETE' });
-    // Table will update via WebSocket broadcast
   }
 
   // ── RFID form ─────────────────────────────────────────────────────────────────
@@ -676,14 +1501,13 @@
   const formError     = document.getElementById('form-error');
   const rfidSave      = document.getElementById('rfid-save');
 
-  // Hide value field when action is "win"
   formAction.addEventListener('change', () => {
     formValueGrp.style.display = formAction.value === 'win' ? 'none' : '';
   });
 
   rfidSave.addEventListener('click', async () => {
     formError.style.display = 'none';
-    const uid   = formUid.value.trim().toUpperCase();
+    const uid       = formUid.value.trim().toUpperCase();
     const action    = formAction.value;
     const recipient = formRecipient.value;
     const value     = action === 'win' ? 0 : Number(formValue.value);
@@ -768,14 +1592,13 @@
     const header = card.querySelector('.tank-header');
     const currentName = card.querySelector(`#name-${escHtml(tankId)}`).textContent;
 
-    // Replace header content with an inline form
     header.innerHTML = `
       <div class="status-dot"></div>
       <div class="rename-form">
         <input class="rename-input" id="rename-input-${escHtml(tankId)}"
                type="text" value="${escHtml(currentName)}" maxlength="32" />
-        <button class="rename-ok"     onclick="commitRename('${escHtml(tankId)}')">✔</button>
-        <button class="rename-cancel" onclick="cancelRename('${escHtml(tankId)}')">✖</button>
+        <button class="rename-ok"     onclick="commitRename('${escHtml(tankId)}')">&#10004;</button>
+        <button class="rename-cancel" onclick="cancelRename('${escHtml(tankId)}')">&#10006;</button>
       </div>
     `;
     const input = document.getElementById(`rename-input-${tankId}`);
@@ -796,13 +1619,9 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ displayName: name }),
     });
-    // Server broadcasts updated snapshot — card will re-render automatically
   }
 
   function cancelRename(tankId) {
-    // Trigger a re-render of just this card by re-using last known tanks state
-    // The simplest way is to re-request via WS; instead just force renderTanks
-    // with the cached state. We keep a local copy for this purpose.
     if (window._lastTanks) renderTanks(window._lastTanks);
   }
 
