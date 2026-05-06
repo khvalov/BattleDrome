@@ -193,259 +193,415 @@
       100% { box-shadow: 0 0 0 14px rgba(63,185,80,0); }
     }
 
-    /* ── Shared section ── */
+    /* ── Shared ── */
     .section { margin-top: 2.5rem; }
-    .section-header {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-      margin-bottom: 0.75rem;
-      flex-wrap: wrap;
-    }
-    .section-header h2 {
-      font-size: 0.85rem;
-      text-transform: uppercase;
-      letter-spacing: 0.1em;
-      color: #8b949e;
-    }
-    .section-meta { font-size: 0.7rem; color: #484f58; }
 
     .btn {
       background: none;
       border: 1px solid #30363d;
       color: #8b949e;
       border-radius: 4px;
-      padding: 0.2rem 0.65rem;
-      font-size: 0.7rem;
+      padding: 0.25rem 0.7rem;
+      font-size: 0.72rem;
       cursor: pointer;
       font-family: inherit;
       letter-spacing: 0.05em;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
     }
     .btn:hover { border-color: #8b949e; color: #e6edf3; }
     .btn.btn-primary { border-color: #58a6ff; color: #58a6ff; }
     .btn.btn-primary:hover { background: #58a6ff22; }
     .btn.btn-success { border-color: #3fb950; color: #3fb950; }
     .btn.btn-success:hover { background: #3fb95022; }
-    .btn.btn-danger  { border-color: #f8514944; color: #f85149; }
-    .btn.btn-danger:hover  { background: #f8514922; }
-    .btn.btn-ml { margin-left: auto; }
-    .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn.btn-danger  { border-color: #f8514966; color: #f85149; }
+    .btn.btn-danger:hover  { background: #f8514920; }
+    .btn.btn-ghost { border-color: transparent; }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; pointer-events: none; }
 
-    .sub-header {
-      font-size: 0.72rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #484f58;
-      margin-bottom: 0.6rem;
-      margin-top: 1rem;
+    input, select {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 4px;
+      color: #e6edf3;
+      font-family: inherit;
+      font-size: 0.78rem;
+      padding: 0.35rem 0.6rem;
+      outline: none;
     }
+    input:focus, select:focus { border-color: #58a6ff; }
+    input[type="color"] { padding: 0.1rem 0.15rem; height: 32px; cursor: pointer; min-width: 40px; }
+    input.uid-input { text-transform: uppercase; font-family: monospace; }
 
-    /* ── Game section ── */
-    #game-section {
+    /* ── Game Panel ──────────────────────────────────────────────────────────── */
+    #game-panel {
       background: #161b22;
       border: 1px solid #30363d;
-      border-radius: 10px;
-      padding: 1.25rem;
+      border-radius: 12px;
+      overflow: hidden;
+      margin-top: 2.5rem;
     }
 
-    .game-status-badge {
-      font-size: 0.72rem;
-      padding: 0.2rem 0.65rem;
+    /* ─ Top bar ─ */
+    #game-topbar {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.9rem 1.25rem;
+      border-bottom: 1px solid #21262d;
+      flex-wrap: wrap;
+    }
+    #game-topbar h2 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: #8b949e;
+      flex-shrink: 0;
+    }
+    .game-status-pill {
+      font-size: 0.68rem;
+      padding: 0.15rem 0.65rem;
       border-radius: 999px;
       font-weight: bold;
       letter-spacing: 0.1em;
       text-transform: uppercase;
+      flex-shrink: 0;
     }
-    .game-status-badge.status-idle    { background: #1c1c1c;  color: #484f58;  border: 1px solid #30363d; }
-    .game-status-badge.status-running { background: #1a3a1a;  color: #3fb950;  border: 1px solid #3fb950; }
-    .game-status-badge.status-ended   { background: #2d1a0f;  color: #f0883e;  border: 1px solid #f0883e; }
+    .game-status-pill.idle    { background:#1c1c1c;  color:#484f58; border:1px solid #30363d; }
+    .game-status-pill.running { background:#1a3a1a;  color:#3fb950; border:1px solid #3fb950; }
+    .game-status-pill.ended   { background:#2d1a0f;  color:#f0883e; border:1px solid #f0883e; }
 
-    .game-top {
+    #game-topbar-actions { margin-left: auto; display: flex; gap: 0.5rem; align-items: center; }
+
+    /* ─ Mode tabs ─ */
+    #mode-tabs {
       display: flex;
-      gap: 1.5rem;
-      align-items: flex-start;
-      flex-wrap: wrap;
-      margin-top: 0.75rem;
+      border-bottom: 1px solid #21262d;
+      overflow-x: auto;
+    }
+    .mode-tab {
+      padding: 0.7rem 1.1rem;
+      font-size: 0.72rem;
+      font-family: inherit;
+      cursor: pointer;
+      border: none;
+      background: none;
+      color: #484f58;
+      white-space: nowrap;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s;
+      letter-spacing: 0.04em;
+    }
+    .mode-tab:hover { color: #8b949e; }
+    .mode-tab.active {
+      color: #e6edf3;
+      border-bottom-color: #58a6ff;
+    }
+    .mode-tab:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* ─ Body layout ─ */
+    #game-body {
+      display: grid;
+      grid-template-columns: 1fr 280px;
+      min-height: 300px;
+    }
+    @media (max-width: 800px) {
+      #game-body { grid-template-columns: 1fr; }
     }
 
-    .game-left { flex: 1; min-width: 0; }
-    .game-right { flex-shrink: 0; }
-
-    .game-config-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.75rem;
-      align-items: flex-end;
+    /* ─ Left: config ─ */
+    #game-config-area {
+      padding: 1.25rem;
+      border-right: 1px solid #21262d;
     }
 
-    .game-timer {
-      font-size: 3rem;
-      font-weight: bold;
-      letter-spacing: 0.08em;
-      color: #58a6ff;
-      font-variant-numeric: tabular-nums;
-      min-width: 6rem;
-      text-align: center;
-      line-height: 1;
-      padding: 0.4rem 0.6rem;
+    .mode-description {
+      font-size: 0.75rem;
+      color: #8b949e;
+      line-height: 1.5;
+      margin-bottom: 1.25rem;
+      padding: 0.75rem;
       background: #0d1117;
-      border: 1px solid #30363d;
-      border-radius: 8px;
-    }
-    .game-timer.running { color: #3fb950; }
-    .game-timer.ending  { color: #f85149; animation: timerBlink 0.8s step-start infinite; }
-    @keyframes timerBlink { 50% { opacity: 0.3; } }
-
-    /* Scoreboard */
-    #scoreboard-wrap {
-      margin-top: 1rem;
-      background: #0d1117;
-      border: 1px solid #21262d;
       border-radius: 6px;
-      padding: 0.75rem 1rem;
+      border-left: 3px solid #30363d;
     }
-    #scoreboard-wrap .sub-header { margin-top: 0; }
-    .score-row {
+
+    /* Settings row (time limit + score target) */
+    .game-settings-row {
+      display: flex;
+      gap: 1rem;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      margin-bottom: 1.25rem;
+    }
+    .game-setting {
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+    .game-setting label {
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #484f58;
+    }
+    .game-setting input { width: 90px; }
+
+    /* Config section label */
+    .config-section-label {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #484f58;
+      margin-bottom: 0.6rem;
       display: flex;
       align-items: center;
-      gap: 0.6rem;
-      padding: 0.35rem 0;
-      border-bottom: 1px solid #21262d;
-      font-size: 0.78rem;
+      gap: 0.75rem;
     }
-    .score-row:last-child { border-bottom: none; }
-    .score-rank   { color: #484f58; font-size: 0.65rem; min-width: 1.2rem; }
-    .score-label  { flex: 1; }
-    .score-value  { font-weight: bold; color: #58a6ff; font-size: 0.9rem; }
-    .score-value.leader { color: #f0883e; }
-    .team-color-dot {
-      width: 10px; height: 10px;
-      border-radius: 50%;
-      flex-shrink: 0;
-      display: inline-block;
+    .config-section-label::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #21262d;
     }
 
-    /* Mode config panels */
-    .mode-config {
-      margin-top: 1rem;
-      padding-top: 1rem;
-      border-top: 1px solid #21262d;
-    }
-    .mode-config .sub-header { margin-top: 0; }
-
-    /* Teams */
-    .team-card {
+    /* Inline add-form */
+    .inline-form {
       background: #0d1117;
-      border: 1px solid #21262d;
+      border: 1px solid #30363d;
       border-radius: 6px;
-      padding: 0.75rem 1rem;
-      margin-bottom: 0.5rem;
+      padding: 0.75rem;
+      margin-bottom: 0.75rem;
+      display: none;
+    }
+    .inline-form.open { display: block; }
+    .inline-form-row {
+      display: flex;
+      gap: 0.6rem;
+      align-items: flex-end;
+      flex-wrap: wrap;
+    }
+    .inline-form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+    }
+    .inline-form-field label {
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #484f58;
+    }
+    .inline-form-actions {
+      display: flex;
+      gap: 0.4rem;
+      margin-top: 0.6rem;
+    }
+
+    /* Team card */
+    .team-card {
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      margin-bottom: 0.65rem;
+      overflow: hidden;
     }
     .team-card-header {
       display: flex;
       align-items: center;
-      gap: 0.6rem;
-      margin-bottom: 0.5rem;
+      gap: 0.7rem;
+      padding: 0.65rem 0.9rem;
+      background: #0d1117;
     }
-    .team-card-header strong { flex: 1; }
-    .team-uid { font-size: 0.68rem; color: #484f58; }
-    .team-tanks {
+    .team-color-bar {
+      width: 4px;
+      height: 28px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .team-card-name { font-weight: bold; font-size: 0.82rem; flex: 1; }
+    .team-card-uid  { font-size: 0.65rem; color: #484f58; font-family: monospace; }
+    .team-card-body { padding: 0.6rem 0.9rem; }
+
+    .team-tanks-label {
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #484f58;
+      margin-bottom: 0.4rem;
+    }
+    .team-tank-list {
       display: flex;
       flex-wrap: wrap;
-      gap: 0.5rem;
+      gap: 0.4rem;
+      margin-bottom: 0.5rem;
+      min-height: 1.5rem;
     }
-    .tank-checkbox {
+    .team-tank-chip {
       display: flex;
       align-items: center;
       gap: 0.3rem;
-      font-size: 0.72rem;
-      cursor: pointer;
-      color: #8b949e;
-    }
-    .tank-checkbox input { cursor: pointer; accent-color: #58a6ff; }
-
-    /* Generic table */
-    .game-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.75rem;
-      margin-top: 0.5rem;
-    }
-    .game-table th {
-      text-align: left;
-      padding: 0.35rem 0.6rem;
-      color: #484f58;
-      font-size: 0.62rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      border-bottom: 1px solid #21262d;
-    }
-    .game-table td {
-      padding: 0.45rem 0.6rem;
-      border-bottom: 1px solid #161b22;
-      color: #c9d1d9;
-    }
-    .game-table tr:hover td { background: #161b22; }
-    .cp-badge {
-      display: inline-block;
-      background: #0d1117;
+      background: #161b22;
       border: 1px solid #30363d;
-      border-radius: 3px;
-      padding: 0.1rem 0.4rem;
-      font-size: 0.65rem;
-      color: #8b949e;
-      font-family: monospace;
+      border-radius: 4px;
+      padding: 0.15rem 0.4rem;
+      font-size: 0.68rem;
     }
-    .cp-taken { border-color: #3fb950; color: #3fb950; }
-    .uid-cell { font-family: monospace; color: #58a6ff; font-size: 0.72rem; }
+    .team-tank-chip button {
+      background: none;
+      border: none;
+      color: #484f58;
+      cursor: pointer;
+      padding: 0;
+      font-size: 0.65rem;
+      line-height: 1;
+    }
+    .team-tank-chip button:hover { color: #f85149; }
+    .team-tank-add {
+      display: flex;
+      gap: 0.4rem;
+      align-items: center;
+    }
+    .team-tank-add select { font-size: 0.72rem; }
 
-    .list-empty {
+    /* Generic items list */
+    .items-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .item-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      background: #0d1117;
+      border: 1px solid #21262d;
+      border-radius: 6px;
+      padding: 0.55rem 0.75rem;
+      font-size: 0.75rem;
+    }
+    .item-uid { font-family: monospace; color: #58a6ff; font-size: 0.72rem; min-width: 90px; }
+    .item-label { flex: 1; }
+    .item-meta { font-size: 0.68rem; color: #8b949e; }
+    .empty-list {
       font-size: 0.75rem;
       color: #484f58;
       font-style: italic;
       padding: 0.5rem 0;
     }
 
-    /* ── RFID section ── */
-    #rfid-table-wrap {
-      overflow-x: auto;
-      margin-bottom: 1.25rem;
-    }
-
-    #rfid-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.75rem;
-    }
-    #rfid-table th {
-      text-align: left;
-      padding: 0.4rem 0.75rem;
-      color: #484f58;
-      font-size: 0.65rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      border-bottom: 1px solid #21262d;
-    }
-    #rfid-table td {
-      padding: 0.5rem 0.75rem;
-      border-bottom: 1px solid #161b22;
-      color: #c9d1d9;
-    }
-    #rfid-table tr:hover td { background: #161b22; }
-
-    .rfid-uid   { font-family: monospace; color: #58a6ff; }
-    .rfid-value.pos { color: #3fb950; }
-    .rfid-value.neg { color: #f85149; }
-
     .action-badge {
       display: inline-block;
-      padding: 0.1rem 0.45rem;
+      padding: 0.1rem 0.4rem;
       border-radius: 4px;
-      font-size: 0.65rem;
+      font-size: 0.62rem;
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.04em;
       font-weight: bold;
     }
+    .action-none     { background:#1c1c1c;  color:#484f58; border:1px solid #30363d; }
+    .action-ammo     { background:#2d2a0f;  color:#e3b341; border:1px solid #e3b34144; }
+    .action-health   { background:#0f2d15;  color:#3fb950; border:1px solid #3fb95044; }
+    .action-speed    { background:#0f1e2d;  color:#58a6ff; border:1px solid #58a6ff44; }
+    .action-immune   { background:#1c1533;  color:#a371f7; border:1px solid #a371f744; }
+    .action-maxspeed { background:#0d2226;  color:#39c5cf; border:1px solid #39c5cf44; }
+
+    .cp-order { width: 22px; height: 22px; border-radius: 50%; background:#21262d; color:#8b949e; display:flex; align-items:center; justify-content:center; font-size:0.65rem; flex-shrink:0; }
+    .cp-taken-by { font-size:0.65rem; color:#3fb950; }
+
+    /* ─ Right: scoreboard + timer ─ */
+    #game-sidebar {
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    #game-timer {
+      text-align: center;
+      font-size: 3.2rem;
+      font-weight: bold;
+      letter-spacing: 0.06em;
+      font-variant-numeric: tabular-nums;
+      color: #30363d;
+      line-height: 1;
+      padding: 1rem;
+      background: #0d1117;
+      border: 1px solid #21262d;
+      border-radius: 8px;
+    }
+    #game-timer.idle    { color: #30363d; }
+    #game-timer.running { color: #58a6ff; }
+    #game-timer.warning { color: #e3b341; }
+    #game-timer.ending  { color: #f85149; animation: timerBlink 0.7s step-start infinite; }
+    #game-timer.unlimited { color: #30363d; letter-spacing: 0; }
+    @keyframes timerBlink { 50% { opacity: 0.2; } }
+
+    #game-start-btn {
+      width: 100%;
+      padding: 0.65rem;
+      font-size: 0.85rem;
+      font-family: inherit;
+      letter-spacing: 0.1em;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: bold;
+      transition: all 0.15s;
+      border: 1px solid #3fb950;
+      background: #1a3a1a;
+      color: #3fb950;
+    }
+    #game-start-btn:hover:not(:disabled) { background: #3fb95033; }
+    #game-start-btn.stop { border-color: #f85149; background: #3a1a1a; color: #f85149; }
+    #game-start-btn.stop:hover { background: #f8514933; }
+    #game-start-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .scoreboard-title {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #484f58;
+      margin-bottom: 0.5rem;
+    }
+    .score-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0;
+      border-bottom: 1px solid #21262d;
+      font-size: 0.75rem;
+    }
+    .score-row:last-child { border-bottom: none; }
+    .score-rank  { color: #484f58; font-size: 0.62rem; min-width: 1.2rem; }
+    .score-name  { flex: 1; }
+    .score-pts   { font-weight: bold; color: #58a6ff; }
+    .score-pts.leader { color: #f0883e; font-size: 0.9rem; }
+    .score-empty { font-size: 0.72rem; color: #484f58; font-style: italic; }
+    .team-dot    { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+    /* ── RFID section ── */
+    #rfid-section .section-header {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 0.75rem;
+    }
+    #rfid-section h2 {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #8b949e;
+    }
+    .section-meta { font-size: 0.7rem; color: #484f58; }
+    .btn-ml { margin-left: auto; }
+
+    #rfid-table-wrap { overflow-x: auto; margin-bottom: 1.25rem; }
+    #rfid-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+    #rfid-table th {
+      text-align: left; padding: 0.4rem 0.75rem;
+      color: #484f58; font-size: 0.65rem; text-transform: uppercase;
+      letter-spacing: 0.08em; border-bottom: 1px solid #21262d;
+    }
+    #rfid-table td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #161b22; color: #c9d1d9; }
+    #rfid-table tr:hover td { background: #161b22; }
+
+    .rfid-uid { font-family: monospace; color: #58a6ff; }
+    .rfid-value.pos { color: #3fb950; }
+    .rfid-value.neg { color: #f85149; }
     .action-ammo     { background:#2d2a0f; color:#e3b341; border:1px solid #e3b34144; }
     .action-health   { background:#0f2d15; color:#3fb950; border:1px solid #3fb95044; }
     .action-speed    { background:#0f1e2d; color:#58a6ff; border:1px solid #58a6ff44; }
@@ -453,27 +609,8 @@
     .action-maxspeed { background:#0d2226; color:#39c5cf; border:1px solid #39c5cf44; }
     .action-minspeed { background:#091415; color:#1b9ea8; border:1px solid #1b9ea844; }
     .action-win      { background:#2d1a0f; color:#f0883e; border:1px solid #f0883e44; }
-    .action-none     { background:#1c1c1c; color:#484f58; border:1px solid #30363d; }
+    .recipient-badge { display:inline-block; padding:0.1rem 0.45rem; border-radius:4px; font-size:0.65rem; text-transform:uppercase; color:#8b949e; border:1px solid #30363d; }
 
-    .recipient-badge {
-      display: inline-block;
-      padding: 0.1rem 0.45rem;
-      border-radius: 4px;
-      font-size: 0.65rem;
-      text-transform: uppercase;
-      color: #8b949e;
-      border: 1px solid #30363d;
-    }
-
-    #rfid-empty {
-      padding: 1.5rem;
-      text-align: center;
-      color: #484f58;
-      font-size: 0.8rem;
-      font-style: italic;
-    }
-
-    /* ── RFID form ── */
     #rfid-form {
       background: #161b22;
       border: 1px solid #30363d;
@@ -481,141 +618,64 @@
       padding: 1rem 1.25rem;
     }
     #rfid-form h3 {
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.08em;
-      color: #8b949e;
-      margin-bottom: 0.9rem;
+      font-size: 0.75rem; text-transform: uppercase;
+      letter-spacing: 0.08em; color: #8b949e; margin-bottom: 0.9rem;
     }
-    .form-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.75rem;
-      align-items: flex-end;
-    }
-    .form-group {
-      display: flex;
-      flex-direction: column;
-      gap: 0.3rem;
-    }
-    .form-group label {
-      font-size: 0.65rem;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: #484f58;
-    }
-    .form-group input,
-    .form-group select {
-      background: #0d1117;
-      border: 1px solid #30363d;
-      border-radius: 4px;
-      color: #e6edf3;
-      font-family: inherit;
-      font-size: 0.78rem;
-      padding: 0.3rem 0.6rem;
-      outline: none;
-      min-width: 100px;
-    }
-    .form-group input[type="color"] {
-      padding: 0.1rem 0.2rem;
-      min-width: 48px;
-      height: 30px;
-      cursor: pointer;
-    }
-    .form-group input:focus,
-    .form-group select:focus { border-color: #58a6ff; }
+    .form-row { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-end; }
+    .form-group { display: flex; flex-direction: column; gap: 0.3rem; }
+    .form-group label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: #484f58; }
     #form-uid   { min-width: 140px; text-transform: uppercase; }
     #form-value { min-width: 80px; }
     #form-error { font-size: 0.7rem; color: #f85149; margin-top: 0.5rem; display: none; }
 
     /* ── Telemetry log ── */
-    #log-list {
-      display: flex;
-      flex-direction: column;
-      gap: 0.4rem;
-      max-height: 480px;
-      overflow-y: auto;
-    }
-
-    .log-entry {
-      background: #0d1117;
-      border: 1px solid #21262d;
-      border-radius: 6px;
-      padding: 0.5rem 0.75rem;
-      font-size: 0.68rem;
-      animation: fadeIn 0.2s ease;
-    }
-    .log-entry.type-fire      { border-left: 3px solid #f78166; }
-    .log-entry.type-rfid      { border-left: 3px solid #f0883e; }
-    .log-entry.type-telemetry { border-left: 3px solid #58a6ff; }
-    .log-entry.type-system    { border-left: 3px solid #3fb950; }
-    .log-entry.type-error     { border-left: 3px solid #f85149; }
-
-    .log-meta { display: flex; gap: 0.75rem; margin-bottom: 0.3rem; color: #484f58; }
-    .log-meta .log-tank { color: #8b949e; }
-    .log-meta .log-type { text-transform: uppercase; letter-spacing: 0.06em; }
-    .log-meta .log-type.type-fire      { color: #f78166; }
-    .log-meta .log-type.type-rfid      { color: #f0883e; }
-    .log-meta .log-type.type-telemetry { color: #58a6ff; }
-    .log-meta .log-type.type-system    { color: #3fb950; }
-    .log-meta .log-type.type-error     { color: #f85149; }
-
-    .log-json { color: #8b949e; white-space: pre; overflow-x: auto; }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(-4px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
+    #log-section .section-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 0.75rem; }
+    #log-section h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.1em; color: #8b949e; }
+    #log-list { display:flex; flex-direction:column; gap:0.4rem; max-height:480px; overflow-y:auto; }
+    .log-entry { background:#0d1117; border:1px solid #21262d; border-radius:6px; padding:0.5rem 0.75rem; font-size:0.68rem; animation:fadeIn 0.2s ease; }
+    .log-entry.type-fire      { border-left:3px solid #f78166; }
+    .log-entry.type-rfid      { border-left:3px solid #f0883e; }
+    .log-entry.type-telemetry { border-left:3px solid #58a6ff; }
+    .log-entry.type-system    { border-left:3px solid #3fb950; }
+    .log-entry.type-error     { border-left:3px solid #f85149; }
+    .log-meta { display:flex; gap:0.75rem; margin-bottom:0.3rem; color:#484f58; }
+    .log-meta .log-tank { color:#8b949e; }
+    .log-meta .log-type { text-transform:uppercase; letter-spacing:0.06em; }
+    .log-meta .log-type.type-fire      { color:#f78166; }
+    .log-meta .log-type.type-rfid      { color:#f0883e; }
+    .log-meta .log-type.type-telemetry { color:#58a6ff; }
+    .log-meta .log-type.type-system    { color:#3fb950; }
+    .log-meta .log-type.type-error     { color:#f85149; }
+    .log-json { color:#8b949e; white-space:pre; overflow-x:auto; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
 
     /* ── Win overlay ── */
     #win-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.88);
-      z-index: 1000;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      gap: 1.5rem;
-      text-align: center;
+      display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88);
+      z-index:1000; flex-direction:column; align-items:center; justify-content:center;
+      gap:1.5rem; text-align:center;
     }
-    #win-overlay.show { display: flex; animation: winIn 0.4s ease; }
-    @keyframes winIn {
-      from { opacity: 0; transform: scale(0.9); }
-      to   { opacity: 1; transform: scale(1); }
-    }
-    #win-trophy  { font-size: 5rem; }
-    #win-title   { font-size: 2.5rem; font-weight: bold; color: #f0883e; letter-spacing: 0.15em; text-transform: uppercase; }
-    #win-sub     { font-size: 1rem; color: #8b949e; }
-    #win-dismiss { margin-top: 0.5rem; }
+    #win-overlay.show { display:flex; animation:popIn 0.4s ease; }
+    @keyframes popIn { from { opacity:0; transform:scale(0.9); } to { opacity:1; transform:scale(1); } }
+    #win-trophy  { font-size:5rem; }
+    #win-title   { font-size:2.5rem; font-weight:bold; color:#f0883e; letter-spacing:0.15em; text-transform:uppercase; }
+    #win-sub     { font-size:1rem; color:#8b949e; }
 
     /* ── Game End overlay ── */
     #game-end-overlay {
-      display: none;
-      position: fixed;
-      inset: 0;
-      background: rgba(0,0,0,0.9);
-      z-index: 999;
-      align-items: center;
-      justify-content: center;
+      display:none; position:fixed; inset:0; background:rgba(0,0,0,0.92);
+      z-index:999; align-items:center; justify-content:center;
     }
-    #game-end-overlay.show { display: flex; animation: winIn 0.4s ease; }
+    #game-end-overlay.show { display:flex; animation:popIn 0.4s ease; }
     .game-end-box {
-      background: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 12px;
-      padding: 2.5rem 3rem;
-      text-align: center;
-      max-width: 480px;
-      width: 90%;
+      background:#161b22; border:1px solid #30363d; border-radius:12px;
+      padding:2.5rem 3rem; text-align:center; max-width:460px; width:90%;
     }
-    .game-end-trophy   { font-size: 4rem; margin-bottom: 0.5rem; }
-    .game-end-title    { font-size: 1.8rem; font-weight: bold; color: #f0883e; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.5rem; }
-    .game-end-reason   { font-size: 0.8rem; color: #8b949e; margin-bottom: 0.25rem; }
-    .game-end-winner   { font-size: 1rem; color: #3fb950; margin-bottom: 1.5rem; }
-    .game-end-scores   { text-align: left; border-top: 1px solid #21262d; padding-top: 1rem; margin-bottom: 1.5rem; }
-    .game-end-scores .score-row { font-size: 0.82rem; }
+    .game-end-trophy  { font-size:3.5rem; margin-bottom:0.5rem; }
+    .game-end-title   { font-size:1.6rem; font-weight:bold; color:#f0883e; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:0.4rem; }
+    .game-end-mode    { font-size:0.72rem; color:#484f58; margin-bottom:0.25rem; }
+    .game-end-winner  { font-size:1rem; color:#3fb950; margin-bottom:1.25rem; min-height:1.5rem; }
+    .game-end-scores  { text-align:left; border-top:1px solid #21262d; padding-top:0.75rem; margin-bottom:1.25rem; }
   </style>
 </head>
 <body>
@@ -628,154 +688,226 @@
 <div id="no-tanks">Waiting for tanks to come online&hellip;</div>
 <div id="grid"></div>
 
-<!-- ── Game Control ───────────────────────────────────────────────────────────── -->
-<div class="section">
-<div id="game-section">
-  <div class="section-header">
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<!--  GAME PANEL                                                                -->
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
+<div id="game-panel">
+
+  <!-- Top bar -->
+  <div id="game-topbar">
     <h2>&#127918; Game</h2>
-    <span id="game-status-badge" class="game-status-badge status-idle">IDLE</span>
-    <button class="btn btn-success" id="btn-game-start">&#9654; Start</button>
-    <button class="btn btn-danger"  id="btn-game-stop"  style="display:none">&#9632; Stop</button>
-    <button class="btn" id="btn-game-reset">&#8634; Reset</button>
+    <span id="game-status-pill" class="game-status-pill idle">IDLE</span>
+    <div id="game-topbar-actions">
+      <button class="btn" id="btn-game-reset">&#8634; Reset</button>
+    </div>
   </div>
 
-  <div class="game-top">
-    <div class="game-left">
-      <!-- Config row -->
-      <div class="game-config-row">
-        <div class="form-group">
-          <label>Mode</label>
-          <select id="game-mode">
-            <option value="free_play">Free Play</option>
-            <option value="ctf_teams">CTF &mdash; Teams</option>
-            <option value="ctf_solo">CTF &mdash; Solo</option>
-            <option value="treasure_hunt">Treasure Hunt</option>
-            <option value="race">Race</option>
-          </select>
+  <!-- Mode tabs -->
+  <div id="mode-tabs">
+    <button class="mode-tab active" data-mode="free_play">Free Play</button>
+    <button class="mode-tab" data-mode="ctf_teams">CTF — Teams</button>
+    <button class="mode-tab" data-mode="ctf_solo">CTF — Solo</button>
+    <button class="mode-tab" data-mode="treasure_hunt">Treasure Hunt</button>
+    <button class="mode-tab" data-mode="race">Race</button>
+  </div>
+
+  <!-- Body -->
+  <div id="game-body">
+
+    <!-- Left: config area -->
+    <div id="game-config-area">
+
+      <!-- Mode description + settings — always visible -->
+      <div id="mode-description" class="mode-description"></div>
+
+      <div class="game-settings-row">
+        <div class="game-setting">
+          <label>Time Limit (min, 0 = unlimited)</label>
+          <input id="game-time-limit" type="number" min="0" step="1" value="4" />
         </div>
-        <div class="form-group">
-          <label>Time Limit (min, 0=&#8734;)</label>
-          <input id="game-time-limit" type="number" min="0" step="1" value="4" style="max-width:80px" />
+        <div class="game-setting" id="score-target-setting" style="display:none">
+          <label>Score Target (0 = off)</label>
+          <input id="game-score-target" type="number" min="0" value="0" />
         </div>
-        <div class="form-group" id="score-target-grp">
-          <label>Score Target (0=off)</label>
-          <input id="game-score-target" type="number" min="0" value="0" style="max-width:80px" />
-        </div>
-        <div class="form-group" style="justify-content:flex-end">
-          <button class="btn btn-primary" id="btn-game-config-save">Apply</button>
-        </div>
+        <button class="btn btn-primary" id="btn-apply-config">Apply</button>
       </div>
 
-      <!-- Scoreboard -->
+      <!-- ── Free Play ── -->
+      <div class="mode-config-panel" id="panel-free-play">
+        <!-- nothing extra -->
+      </div>
+
+      <!-- ── CTF Teams ── -->
+      <div class="mode-config-panel" id="panel-ctf-teams" style="display:none">
+
+        <div class="config-section-label">Step 1 — Create teams</div>
+
+        <button class="btn btn-primary" id="btn-toggle-team-form" style="margin-bottom:0.6rem">
+          ＋ Add Team
+        </button>
+
+        <!-- Inline team creation form -->
+        <div class="inline-form" id="team-form">
+          <div class="inline-form-row">
+            <div class="inline-form-field">
+              <label>Team Name</label>
+              <input id="team-name" type="text" placeholder="Red Team" style="min-width:130px" />
+            </div>
+            <div class="inline-form-field">
+              <label>Color</label>
+              <input id="team-color" type="color" value="#f85149" />
+            </div>
+            <div class="inline-form-field">
+              <label>Home RFID UID</label>
+              <input id="team-home-uid" class="uid-input" type="text" placeholder="AABBCCDD" style="min-width:120px" />
+            </div>
+          </div>
+          <div class="inline-form-actions">
+            <button class="btn btn-success" id="btn-create-team">Create Team</button>
+            <button class="btn" id="btn-cancel-team-form">Cancel</button>
+          </div>
+        </div>
+
+        <div id="teams-list"></div>
+
+        <div class="config-section-label" style="margin-top:1rem">Step 2 — Assign tanks to teams</div>
+        <p style="font-size:0.72rem;color:#8b949e;margin-bottom:0.6rem">
+          Use the <strong style="color:#e6edf3">+ Add Tank</strong> button inside each team card above.
+          A tank can only belong to one team.
+        </p>
+      </div>
+
+      <!-- ── CTF Solo ── -->
+      <div class="mode-config-panel" id="panel-ctf-solo" style="display:none">
+
+        <div class="config-section-label">Assign home RFID per tank</div>
+        <p style="font-size:0.72rem;color:#8b949e;margin-bottom:0.75rem">
+          Each tank gets one home base RFID. Scanning another tank's base scores 1 point.
+        </p>
+
+        <button class="btn btn-primary" id="btn-toggle-base-form" style="margin-bottom:0.6rem">
+          ＋ Assign Base
+        </button>
+
+        <div class="inline-form" id="base-form">
+          <div class="inline-form-row">
+            <div class="inline-form-field">
+              <label>Tank</label>
+              <select id="base-tank-select" style="min-width:160px"></select>
+            </div>
+            <div class="inline-form-field">
+              <label>Home RFID UID</label>
+              <input id="base-uid" class="uid-input" type="text" placeholder="AABBCCDD" style="min-width:120px" />
+            </div>
+          </div>
+          <div class="inline-form-actions">
+            <button class="btn btn-success" id="btn-assign-base">Assign</button>
+            <button class="btn" id="btn-cancel-base-form">Cancel</button>
+          </div>
+        </div>
+
+        <div id="bases-list" class="items-list"></div>
+      </div>
+
+      <!-- ── Treasure Hunt ── -->
+      <div class="mode-config-panel" id="panel-treasure-hunt" style="display:none">
+
+        <div class="config-section-label">Treasures (RFID tags on the field)</div>
+        <p style="font-size:0.72rem;color:#8b949e;margin-bottom:0.75rem">
+          Each RFID scan awards points and optionally applies a power-up to the scanning tank.
+        </p>
+
+        <button class="btn btn-primary" id="btn-toggle-treasure-form" style="margin-bottom:0.6rem">
+          ＋ Add Treasure
+        </button>
+
+        <div class="inline-form" id="treasure-form">
+          <div class="inline-form-row">
+            <div class="inline-form-field">
+              <label>RFID UID</label>
+              <input id="treasure-uid" class="uid-input" type="text" placeholder="AABBCCDD" style="min-width:110px" />
+            </div>
+            <div class="inline-form-field">
+              <label>Label</label>
+              <input id="treasure-label" type="text" placeholder="Gold chest" style="min-width:110px" />
+            </div>
+            <div class="inline-form-field">
+              <label>Points</label>
+              <input id="treasure-points" type="number" value="10" min="0" style="width:70px" />
+            </div>
+            <div class="inline-form-field">
+              <label>Power-up</label>
+              <select id="treasure-action">
+                <option value="none">None</option>
+                <option value="health">&#10084; Health</option>
+                <option value="ammo">&#128165; Ammo</option>
+                <option value="speed">&#9889; Fire Speed</option>
+                <option value="immune">&#128737; Immune</option>
+                <option value="maxspeed">&#128007; Max Speed</option>
+              </select>
+            </div>
+            <div class="inline-form-field" id="treasure-av-field">
+              <label>Value</label>
+              <input id="treasure-action-value" type="number" value="20" style="width:70px" />
+            </div>
+          </div>
+          <div class="inline-form-actions">
+            <button class="btn btn-success" id="btn-add-treasure">Add Treasure</button>
+            <button class="btn" id="btn-cancel-treasure-form">Cancel</button>
+          </div>
+        </div>
+
+        <div id="treasures-list" class="items-list"></div>
+      </div>
+
+      <!-- ── Race ── -->
+      <div class="mode-config-panel" id="panel-race" style="display:none">
+
+        <div class="config-section-label">Checkpoints (RFID tags)</div>
+        <p style="font-size:0.72rem;color:#8b949e;margin-bottom:0.75rem">
+          The first tank to scan each checkpoint claims it and scores 1 point.
+          Multiple checkpoints can be active at once.
+        </p>
+
+        <button class="btn btn-primary" id="btn-toggle-cp-form" style="margin-bottom:0.6rem">
+          ＋ Add Checkpoint
+        </button>
+
+        <div class="inline-form" id="cp-form">
+          <div class="inline-form-row">
+            <div class="inline-form-field">
+              <label>RFID UID</label>
+              <input id="cp-uid" class="uid-input" type="text" placeholder="AABBCCDD" style="min-width:130px" />
+            </div>
+            <div class="inline-form-field">
+              <label>Label (optional)</label>
+              <input id="cp-label" type="text" placeholder="Checkpoint A" style="min-width:130px" />
+            </div>
+          </div>
+          <div class="inline-form-actions">
+            <button class="btn btn-success" id="btn-add-cp">Add</button>
+            <button class="btn" id="btn-cancel-cp-form">Cancel</button>
+          </div>
+        </div>
+
+        <div id="checkpoints-list" class="items-list"></div>
+      </div>
+
+    </div><!-- #game-config-area -->
+
+    <!-- Right: timer + start + scoreboard -->
+    <div id="game-sidebar">
+      <div id="game-timer" class="idle">--:--</div>
+      <button id="game-start-btn">&#9654;&ensp;START ROUND</button>
+
       <div id="scoreboard-wrap" style="display:none">
-        <div class="sub-header">Scoreboard</div>
+        <div class="scoreboard-title">Scoreboard</div>
         <div id="scoreboard"></div>
       </div>
     </div>
 
-    <div class="game-right">
-      <div class="game-timer" id="game-timer">--:--</div>
-    </div>
-  </div>
-
-  <!-- ── CTF Teams config ── -->
-  <div class="mode-config" id="config-ctf-teams" style="display:none">
-    <div class="sub-header">Teams</div>
-    <div class="form-row" style="margin-bottom:0.75rem">
-      <div class="form-group">
-        <label>Team Name</label>
-        <input id="team-name" type="text" placeholder="Red Team" style="min-width:130px" />
-      </div>
-      <div class="form-group">
-        <label>Color</label>
-        <input id="team-color" type="color" value="#f85149" />
-      </div>
-      <div class="form-group">
-        <label>Home UID</label>
-        <input id="team-home-uid" type="text" placeholder="AABBCCDD" style="text-transform:uppercase;min-width:130px" />
-      </div>
-      <div class="form-group" style="justify-content:flex-end">
-        <button class="btn btn-primary" id="btn-add-team">Add Team</button>
-      </div>
-    </div>
-    <div id="teams-list"></div>
-  </div>
-
-  <!-- ── CTF Solo config ── -->
-  <div class="mode-config" id="config-ctf-solo" style="display:none">
-    <div class="sub-header">Home Bases</div>
-    <div class="form-row" style="margin-bottom:0.75rem">
-      <div class="form-group">
-        <label>Tank</label>
-        <select id="base-tank-select" style="min-width:160px"></select>
-      </div>
-      <div class="form-group">
-        <label>Home UID</label>
-        <input id="base-uid" type="text" placeholder="AABBCCDD" style="text-transform:uppercase;min-width:130px" />
-      </div>
-      <div class="form-group" style="justify-content:flex-end">
-        <button class="btn btn-primary" id="btn-add-base">Assign Base</button>
-      </div>
-    </div>
-    <div id="bases-list"></div>
-  </div>
-
-  <!-- ── Treasure Hunt config ── -->
-  <div class="mode-config" id="config-treasure-hunt" style="display:none">
-    <div class="sub-header">Treasures</div>
-    <div class="form-row" style="margin-bottom:0.75rem">
-      <div class="form-group">
-        <label>UID</label>
-        <input id="treasure-uid" type="text" placeholder="AABBCCDD" style="text-transform:uppercase;min-width:120px" />
-      </div>
-      <div class="form-group">
-        <label>Label</label>
-        <input id="treasure-label" type="text" placeholder="Gold chest" style="min-width:120px" />
-      </div>
-      <div class="form-group">
-        <label>Points</label>
-        <input id="treasure-points" type="number" value="10" min="0" style="max-width:70px" />
-      </div>
-      <div class="form-group">
-        <label>Artifact</label>
-        <select id="treasure-action">
-          <option value="none">None</option>
-          <option value="health">Health</option>
-          <option value="ammo">Ammo</option>
-          <option value="speed">Fire Speed</option>
-          <option value="immune">Immune</option>
-          <option value="maxspeed">Max Speed</option>
-        </select>
-      </div>
-      <div class="form-group" id="treasure-av-grp">
-        <label>Value</label>
-        <input id="treasure-action-value" type="number" value="20" style="max-width:70px" />
-      </div>
-      <div class="form-group" style="justify-content:flex-end">
-        <button class="btn btn-primary" id="btn-add-treasure">Add Treasure</button>
-      </div>
-    </div>
-    <div id="treasures-list"></div>
-  </div>
-
-  <!-- ── Race config ── -->
-  <div class="mode-config" id="config-race" style="display:none">
-    <div class="sub-header">Checkpoints</div>
-    <p style="font-size:0.72rem;color:#484f58;margin-bottom:0.6rem">Tanks score a point for each checkpoint they hit first. Order is displayed only.</p>
-    <div class="form-row" style="margin-bottom:0.75rem">
-      <div class="form-group">
-        <label>UID</label>
-        <input id="cp-uid" type="text" placeholder="AABBCCDD" style="text-transform:uppercase;min-width:130px" />
-      </div>
-      <div class="form-group" style="justify-content:flex-end">
-        <button class="btn btn-primary" id="btn-add-cp">Add Checkpoint</button>
-      </div>
-    </div>
-    <div id="checkpoints-list"></div>
-  </div>
-
-</div><!-- #game-section -->
-</div>
+  </div><!-- #game-body -->
+</div><!-- #game-panel -->
 
 <!-- ── RFID Actions ─────────────────────────────────────────────────────────── -->
 <div class="section" id="rfid-section">
@@ -787,16 +919,10 @@
   <div id="rfid-table-wrap">
     <table id="rfid-table">
       <thead>
-        <tr>
-          <th>UID</th>
-          <th>Action</th>
-          <th>Recipient</th>
-          <th>Value</th>
-          <th></th>
-        </tr>
+        <tr><th>UID</th><th>Action</th><th>Recipient</th><th>Value</th><th></th></tr>
       </thead>
       <tbody id="rfid-tbody">
-        <tr><td colspan="5" id="rfid-empty">No RFID rules yet. Add one below.</td></tr>
+        <tr><td colspan="5" style="padding:1.5rem;text-align:center;color:#484f58;font-style:italic">No RFID rules yet.</td></tr>
       </tbody>
     </table>
   </div>
@@ -841,7 +967,7 @@
   </div>
 </div>
 
-<!-- ── Telemetry Log ──────────────────────────────────────────────────────────── -->
+<!-- ── Telemetry Log ─────────────────────────────────────────────────────────── -->
 <div class="section" id="log-section">
   <div class="section-header">
     <h2>Telemetry Log</h2>
@@ -856,7 +982,7 @@
   <div id="win-trophy">&#127942;</div>
   <div id="win-title">Victory!</div>
   <div id="win-sub"></div>
-  <button class="btn" id="win-dismiss">Dismiss</button>
+  <button class="btn" onclick="document.getElementById('win-overlay').classList.remove('show')">Dismiss</button>
 </div>
 
 <!-- ── Game End overlay ──────────────────────────────────────────────────────── -->
@@ -864,768 +990,732 @@
   <div class="game-end-box">
     <div class="game-end-trophy">&#127942;</div>
     <div class="game-end-title" id="game-end-title">Round Over!</div>
-    <div class="game-end-reason" id="game-end-reason"></div>
+    <div class="game-end-mode"  id="game-end-mode"></div>
     <div class="game-end-winner" id="game-end-winner"></div>
     <div class="game-end-scores" id="game-end-scores"></div>
-    <button class="btn" id="btn-game-end-dismiss">Dismiss</button>
+    <button class="btn" id="btn-end-dismiss">Dismiss</button>
   </div>
 </div>
 
+<!-- ═══════════════════════════════════════════════════════════════════════════ -->
 <script>
-  const grid    = document.getElementById('grid');
-  const noTanks = document.getElementById('no-tanks');
-  const badge   = document.getElementById('connection-badge');
+'use strict';
 
-  let ws;
-  window._lastTanks = [];
-  window._gameState = null;
+// ── State ─────────────────────────────────────────────────────────────────────
+let _tanks     = [];
+let _gameState = null;
+let _ws;
 
-  function connect() {
-    ws = new WebSocket(`ws://${location.host}`);
-    ws.onopen  = () => { badge.textContent = 'CONNECTED';    badge.className = 'connected'; };
-    ws.onclose = () => { badge.textContent = 'DISCONNECTED'; badge.className = 'disconnected'; setTimeout(connect, 3000); };
-    ws.onmessage = (ev) => {
-      const msg = JSON.parse(ev.data);
-      if (msg.type === 'update')       { window._lastTanks = msg.tanks; renderTanks(msg.tanks); }
-      if (msg.type === 'log')          appendLog(msg);
-      if (msg.type === 'rfid_actions') renderRfidTable(msg.actions);
-      if (msg.type === 'win')          showWin(msg);
-      if (msg.type === 'game_update')  { window._gameState = msg.game; applyGameState(msg.game); }
-      if (msg.type === 'game_tick')    updateTimerDisplay(msg.timeRemaining);
-      if (msg.type === 'game_end')     { window._gameState = msg.game; applyGameState(msg.game); showGameEnd(msg.game, msg.reason); }
-    };
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+const badge = document.getElementById('connection-badge');
+
+function connect() {
+  _ws = new WebSocket(`ws://${location.host}`);
+  _ws.onopen  = () => { badge.textContent = 'CONNECTED';    badge.className = 'connected'; };
+  _ws.onclose = () => { badge.textContent = 'DISCONNECTED'; badge.className = 'disconnected'; setTimeout(connect, 3000); };
+  _ws.onmessage = ({ data }) => {
+    const msg = JSON.parse(data);
+    switch (msg.type) {
+      case 'update':       _tanks = msg.tanks; renderTanks(msg.tanks); break;
+      case 'log':          appendLog(msg); break;
+      case 'rfid_actions': renderRfidTable(msg.actions); break;
+      case 'win':          showWinOverlay(msg); break;
+      case 'game_update':  _gameState = msg.game; applyGameState(msg.game); break;
+      case 'game_tick':    onGameTick(msg.timeRemaining); break;
+      case 'game_end':     _gameState = msg.game; applyGameState(msg.game); showGameEnd(msg.game, msg.reason); break;
+    }
+  };
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function fmt(seconds) {
+  if (seconds <= 0) return '00:00';
+  const m = Math.floor(seconds / 60), s = seconds % 60;
+  return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+function timeSince(ms) {
+  const s = Math.floor((Date.now() - ms) / 1000);
+  if (s < 5)  return 'just now';
+  if (s < 60) return `${s}s ago`;
+  return `${Math.floor(s / 60)}m ${s % 60}s ago`;
+}
+function tankName(id) {
+  const t = _tanks.find(t => t.id === id);
+  return t?.displayName || id;
+}
+async function api(method, url, body) {
+  return fetch(url, {
+    method,
+    headers: body ? { 'Content-Type': 'application/json' } : {},
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+function toggleInlineForm(formId, btnId) {
+  const form = document.getElementById(formId);
+  const btn  = document.getElementById(btnId);
+  const open = form.classList.toggle('open');
+  btn.textContent = open ? '✕ Cancel' : '＋ ' + btn.dataset.label;
+}
+
+// ── Tank cards ────────────────────────────────────────────────────────────────
+const grid    = document.getElementById('grid');
+const noTanks = document.getElementById('no-tanks');
+
+function bar(label, cls, value, max) {
+  const pct = Math.round(Math.min(100, Math.max(0, value / max * 100)));
+  return `<div class="stat-row">
+    <span class="stat-label">${label}</span>
+    <div class="bar-track"><div class="bar-fill ${cls}" style="width:${pct}%"></div></div>
+    <span class="stat-value">${value}</span>
+  </div>`;
+}
+
+function telHtml(t) {
+  if (!t) return '<div class="no-telemetry">No telemetry yet</div>';
+  const sv = t.maxSpeed ?? 255;
+  return [
+    bar('Speed',    'bar-speed',     t.speed     ?? 0, sv),
+    bar('Health',   'bar-health',    t.health    ?? 0, 100),
+    bar('Ammo',     'bar-ammo',      t.ammo      ?? 0, 100),
+    bar('Ammo Lv',  'bar-ammoLevel', t.ammoLevel ?? 0, 10),
+    bar('Fire Spd', 'bar-fireSpeed', t.fireSpeed ?? 0, 10),
+    bar('Max Spd',  'bar-maxSpeed',  t.maxSpeed  ?? 160, 255),
+    bar('Min Spd',  'bar-minSpeed',  t.minSpeed  ?? 0, 255),
+  ].join('') + `<div class="immune-row">
+    <span class="stat-label">Immune</span>
+    <span class="immune-badge ${t.immunable ? 'immune-on' : 'immune-off'}">${t.immunable ? 'YES' : 'NO'}</span>
+  </div>`;
+}
+
+function renderTanks(tanks) {
+  noTanks.style.display = tanks.length ? 'none' : 'block';
+  const seen = new Set(tanks.map(t => t.id));
+  for (const c of grid.querySelectorAll('.tank-card')) {
+    if (!seen.has(c.dataset.id)) c.remove();
+  }
+  for (const tank of tanks) {
+    let card = grid.querySelector(`.tank-card[data-id="${esc(tank.id)}"]`);
+    const wasOnline = card?.classList.contains('online');
+    if (!card) {
+      card = document.createElement('div');
+      card.className = 'tank-card';
+      card.dataset.id = tank.id;
+      grid.appendChild(card);
+    }
+    card.className = `tank-card ${tank.online ? 'online' : 'offline'}`;
+    if (tank.lastSeen) card.dataset.lastSeen = tank.lastSeen;
+
+    if (card.querySelector('.rename-input') === document.activeElement) {
+      const tel = card.querySelector('.telemetry');
+      if (tel) tel.innerHTML = telHtml(tank.telemetry);
+      continue;
+    }
+
+    const dispName  = tank.displayName || tank.id;
+    const idLabel   = tank.displayName ? `<span class="tank-id-label">(${esc(tank.id)})</span>` : '';
+    card.innerHTML = `
+      <div class="tank-header">
+        <div class="status-dot"></div>
+        <span class="tank-name" id="tname-${esc(tank.id)}">${esc(dispName)}</span>
+        ${idLabel}
+        <button class="btn-rename" onclick="startRename('${esc(tank.id)}')">&#9998;</button>
+        <span class="tank-status-label">${tank.online ? 'ONLINE' : 'OFFLINE'}</span>
+      </div>
+      <div class="tank-meta">${tank.lastSeen ? `Last seen: ${timeSince(tank.lastSeen)}` : ''}</div>
+      <div class="telemetry">${telHtml(tank.telemetry)}</div>`;
+    if (!wasOnline && tank.online) {
+      card.classList.add('pulse');
+      card.addEventListener('animationend', () => card.classList.remove('pulse'), { once: true });
+    }
+  }
+  refreshTankDropdowns();
+}
+
+setInterval(() => {
+  for (const c of grid.querySelectorAll('.tank-card[data-last-seen]')) {
+    const m = c.querySelector('.tank-meta');
+    if (m) m.textContent = `Last seen: ${timeSince(Number(c.dataset.lastSeen))}`;
+  }
+}, 5000);
+
+// ── Rename ────────────────────────────────────────────────────────────────────
+function startRename(id) {
+  const card = grid.querySelector(`.tank-card[data-id="${esc(id)}"]`);
+  if (!card) return;
+  const cur = card.querySelector(`#tname-${esc(id)}`).textContent;
+  card.querySelector('.tank-header').innerHTML = `
+    <div class="status-dot"></div>
+    <div class="rename-form">
+      <input class="rename-input" id="ri-${esc(id)}" type="text" value="${esc(cur)}" maxlength="32" />
+      <button class="rename-ok"     onclick="commitRename('${esc(id)}')">&#10004;</button>
+      <button class="rename-cancel" onclick="cancelRename()">&#10006;</button>
+    </div>`;
+  const inp = document.getElementById(`ri-${id}`);
+  inp.focus(); inp.select();
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  commitRename(id);
+    if (e.key === 'Escape') cancelRename();
+  });
+}
+async function commitRename(id) {
+  const inp = document.getElementById(`ri-${id}`);
+  if (!inp) return;
+  await api('PATCH', `/api/tanks/${encodeURIComponent(id)}`, { displayName: inp.value.trim() });
+}
+function cancelRename() { renderTanks(_tanks); }
+
+// ── Game: mode tabs ───────────────────────────────────────────────────────────
+const MODE_DESCRIPTIONS = {
+  free_play:     'No rules — tanks shoot each other freely. RFID tags apply their configured actions from the RFID Actions table below.',
+  ctf_teams:     'Create teams, assign tanks, and set a home RFID for each team. A team scores 1 point each time one of their tanks scans an opponent\'s home RFID tag.',
+  ctf_solo:      'Each tank has its own home RFID base. Scanning another tank\'s base scores 1 point for the scanner.',
+  treasure_hunt: 'Place RFID tags around the arena as treasures. Each scan awards points and optionally applies a power-up (health, ammo, speed…). First to the score target wins, or play until time runs out.',
+  race:          'Register checkpoint RFIDs. The first tank to scan each checkpoint claims it and scores 1 point. Set a score target to end the round early.',
+};
+const MODE_LABELS = {
+  free_play: 'Free Play', ctf_teams: 'CTF — Teams',
+  ctf_solo: 'CTF — Solo', treasure_hunt: 'Treasure Hunt', race: 'Race',
+};
+const REASON_LABELS = {
+  time_up: "Time's Up!", score_target: 'Score Target Reached!',
+  all_checkpoints: 'All Checkpoints Claimed!', manual: 'Round Stopped',
+};
+
+for (const tab of document.querySelectorAll('.mode-tab')) {
+  tab.addEventListener('click', () => {
+    if (_gameState?.status === 'running') return;
+    selectMode(tab.dataset.mode, true);
+  });
+}
+
+function selectMode(mode, sendToServer = false) {
+  for (const tab of document.querySelectorAll('.mode-tab')) {
+    tab.classList.toggle('active', tab.dataset.mode === mode);
+  }
+  for (const p of document.querySelectorAll('.mode-config-panel')) p.style.display = 'none';
+  const panel = document.getElementById(`panel-${mode}`);
+  if (panel) panel.style.display = '';
+  document.getElementById('mode-description').textContent = MODE_DESCRIPTIONS[mode] || '';
+
+  const showTarget = mode === 'treasure_hunt' || mode === 'race';
+  document.getElementById('score-target-setting').style.display = showTarget ? '' : 'none';
+
+  if (sendToServer) saveConfig(mode);
+}
+
+function saveConfig(mode) {
+  const timeLimitS  = Math.max(0, (Number(document.getElementById('game-time-limit').value)  || 0)) * 60;
+  const scoreTarget = Math.max(0,  Number(document.getElementById('game-score-target').value) || 0);
+  api('PATCH', '/api/game', { mode: mode ?? _gameState?.mode, timeLimit: timeLimitS, scoreTarget });
+}
+
+document.getElementById('btn-apply-config').addEventListener('click', () => saveConfig());
+
+// ── Game: start / stop / reset ────────────────────────────────────────────────
+const startBtn  = document.getElementById('game-start-btn');
+const timerEl   = document.getElementById('game-timer');
+const statusPill = document.getElementById('game-status-pill');
+
+startBtn.addEventListener('click', () => {
+  if (_gameState?.status === 'running') {
+    api('POST', '/api/game/stop');
+  } else {
+    api('POST', '/api/game/start');
+  }
+});
+document.getElementById('btn-game-reset').addEventListener('click', () => api('POST', '/api/game/reset'));
+
+// ── Game: apply state from server ─────────────────────────────────────────────
+function applyGameState(g) {
+  _gameState = g;
+
+  // Status pill
+  statusPill.textContent = g.status.toUpperCase();
+  statusPill.className   = `game-status-pill ${g.status}`;
+
+  // Start/stop button
+  const running = g.status === 'running';
+  if (running) {
+    startBtn.textContent = '■ STOP ROUND';
+    startBtn.className   = 'stop';
+  } else {
+    startBtn.textContent = '▶ START ROUND';
+    startBtn.className   = '';
   }
 
-  // ── Helpers ──────────────────────────────────────────────────────────────────
-  function timeSince(ms) {
-    const s = Math.floor((Date.now() - ms) / 1000);
-    if (s < 5)  return 'just now';
-    if (s < 60) return `${s}s ago`;
-    return `${Math.floor(s / 60)}m ${s % 60}s ago`;
+  // Lock tabs + config while running
+  for (const t of document.querySelectorAll('.mode-tab')) t.disabled = running;
+  document.getElementById('btn-apply-config').disabled = running;
+  document.getElementById('game-time-limit').disabled  = running;
+  document.getElementById('game-score-target').disabled = running;
+
+  // Sync mode tab (only when not running, avoid fighting user focus)
+  if (!running) selectMode(g.mode, false);
+
+  // Sync inputs
+  if (document.activeElement !== document.getElementById('game-time-limit'))
+    document.getElementById('game-time-limit').value   = Math.round(g.timeLimit / 60);
+  if (document.activeElement !== document.getElementById('game-score-target'))
+    document.getElementById('game-score-target').value = g.scoreTarget;
+
+  // Timer
+  setTimerDisplay(g.timeRemaining, g.timeLimit, g.status);
+
+  // Mode-specific renders
+  renderTeams(g.teams);
+  renderBases(g.bases);
+  renderTreasures(g.treasures);
+  renderCheckpoints(g.checkpoints, g.takenCheckpoints);
+
+  // Scoreboard
+  const hasData = Object.keys(g.scores).length > 0 || running || g.status === 'ended';
+  const competitive = g.mode !== 'free_play';
+  document.getElementById('scoreboard-wrap').style.display = (competitive && hasData) ? '' : 'none';
+  if (competitive) renderScoreboard(g);
+}
+
+function setTimerDisplay(remaining, timeLimit, status) {
+  if (status === 'idle') {
+    timerEl.className   = 'idle';
+    timerEl.textContent = timeLimit > 0 ? fmt(timeLimit) : '∞';
+    return;
+  }
+  if (timeLimit === 0) {
+    timerEl.className   = 'unlimited running';
+    timerEl.textContent = '∞';
+    return;
+  }
+  timerEl.textContent = fmt(remaining);
+  if      (remaining <= 0)   timerEl.className = 'ending';
+  else if (remaining <= 30)  timerEl.className = 'warning';
+  else                        timerEl.className = 'running';
+}
+
+function onGameTick(remaining) {
+  if (!_gameState) return;
+  _gameState.timeRemaining = remaining;
+  setTimerDisplay(remaining, _gameState.timeLimit, _gameState.status);
+}
+
+// ── Scoreboard ────────────────────────────────────────────────────────────────
+function renderScoreboard(g) {
+  const el = document.getElementById('scoreboard');
+  let rows = [];
+
+  if (g.mode === 'ctf_teams') {
+    rows = Object.entries(g.teams).map(([id, t]) => ({
+      label: t.name, color: t.color, score: g.scores[id] || 0,
+    }));
+  } else {
+    const ids = new Set([...Object.keys(g.scores), ..._tanks.map(t => t.id)]);
+    rows = [...ids].map(id => ({ label: tankName(id), color: null, score: g.scores[id] || 0 }));
   }
 
-  function escHtml(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  rows.sort((a, b) => b.score - a.score);
+  const max = rows[0]?.score || 0;
+
+  el.innerHTML = rows.length === 0
+    ? '<div class="score-empty">No scores yet</div>'
+    : rows.map((r, i) => `
+        <div class="score-row">
+          <span class="score-rank">${i + 1}</span>
+          ${r.color ? `<span class="team-dot" style="background:${esc(r.color)}"></span>` : ''}
+          <span class="score-name">${esc(r.label)}</span>
+          <span class="score-pts ${r.score === max && max > 0 ? 'leader' : ''}">${r.score}</span>
+        </div>`).join('');
+}
+
+// ── CTF Teams ────────────────────────────────────────────────────────────────
+let _teamIdSeq = Date.now();
+
+// Toggle Add Team form
+document.getElementById('btn-toggle-team-form').addEventListener('click', function() {
+  const form = document.getElementById('team-form');
+  const open = form.classList.toggle('open');
+  this.textContent = open ? '✕ Cancel' : '＋ Add Team';
+  if (open) document.getElementById('team-name').focus();
+});
+document.getElementById('btn-cancel-team-form').addEventListener('click', () => {
+  document.getElementById('team-form').classList.remove('open');
+  document.getElementById('btn-toggle-team-form').textContent = '＋ Add Team';
+});
+document.getElementById('btn-create-team').addEventListener('click', async () => {
+  const name    = document.getElementById('team-name').value.trim();
+  const color   = document.getElementById('team-color').value;
+  const homeUid = document.getElementById('team-home-uid').value.trim().toUpperCase();
+  if (!name) { alert('Enter a team name.'); return; }
+  const teamId = `team_${_teamIdSeq++}`;
+  await api('PUT', `/api/game/teams/${encodeURIComponent(teamId)}`, { name, color, homeUid, tankIds: [] });
+  document.getElementById('team-name').value     = '';
+  document.getElementById('team-home-uid').value = '';
+  document.getElementById('team-form').classList.remove('open');
+  document.getElementById('btn-toggle-team-form').textContent = '＋ Add Team';
+});
+
+function renderTeams(teams) {
+  const el = document.getElementById('teams-list');
+  const entries = Object.entries(teams);
+  if (!entries.length) {
+    el.innerHTML = '<div class="empty-list">No teams yet — click ＋ Add Team above.</div>';
+    return;
   }
 
-  function formatTime(seconds) {
-    if (seconds <= 0) return '00:00';
-    const m = Math.floor(seconds / 60);
-    const s = seconds % 60;
-    return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-  }
+  // Collect which tanks are already assigned (to exclude from dropdowns)
+  const assignedTanks = new Set(
+    entries.flatMap(([, t]) => t.tankIds || [])
+  );
 
-  function tankDisplayName(tankId) {
-    const t = (window._lastTanks || []).find(t => t.id === tankId);
-    return t?.displayName || tankId;
-  }
+  el.innerHTML = entries.map(([teamId, team]) => {
+    const chips = (team.tankIds || []).map(tid => `
+      <span class="team-tank-chip">
+        ${esc(tankName(tid))}
+        <button title="Remove" onclick="removeTankFromTeam('${esc(teamId)}','${esc(tid)}')">&#10005;</button>
+      </span>`).join('');
 
-  // ── Tank cards ───────────────────────────────────────────────────────────────
-  function barHtml(label, cssClass, value, max) {
-    const pct = Math.round(Math.min(100, Math.max(0, (value / max) * 100)));
+    // Build dropdown of unassigned tanks + tanks already on THIS team
+    const available = _tanks.filter(t => !assignedTanks.has(t.id) || (team.tankIds || []).includes(t.id));
+    const opts = available
+      .filter(t => !(team.tankIds || []).includes(t.id))
+      .map(t => `<option value="${esc(t.id)}">${esc(tankName(t.id))}</option>`).join('');
+
     return `
-      <div class="stat-row">
-        <span class="stat-label">${label}</span>
-        <div class="bar-track"><div class="bar-fill ${cssClass}" style="width:${pct}%"></div></div>
-        <span class="stat-value">${value}</span>
-      </div>`;
-  }
-
-  function telemetryHtml(t) {
-    if (!t) return '<div class="no-telemetry">No telemetry yet</div>';
-    const speed     = t.speed     ?? '—';
-    const health    = t.health    ?? '—';
-    const ammo      = t.ammo      ?? '—';
-    const ammoLevel = t.ammoLevel ?? '—';
-    const fireSpeed = t.fireSpeed ?? '—';
-    const immunable = t.immunable ?? false;
-    const maxSpeed  = t.maxSpeed  ?? 160;
-    const minSpeed  = t.minSpeed  ?? '—';
-    const speedMax  = t.maxSpeed  ?? 255;
-    const bars = `
-      ${barHtml('Speed',    'bar-speed',     speed     === '—' ? 0 : speed,     speedMax)}
-      ${barHtml('Health',   'bar-health',    health    === '—' ? 0 : health,    100)}
-      ${barHtml('Ammo',     'bar-ammo',      ammo      === '—' ? 0 : ammo,      100)}
-      ${barHtml('Ammo Lv',  'bar-ammoLevel', ammoLevel === '—' ? 0 : ammoLevel, 10)}
-      ${barHtml('Fire Spd', 'bar-fireSpeed', fireSpeed === '—' ? 0 : fireSpeed, 10)}
-      ${barHtml('Max Spd',  'bar-maxSpeed',  maxSpeed,                          255)}
-      ${barHtml('Min Spd',  'bar-minSpeed',  minSpeed  === '—' ? 0 : minSpeed,  255)}
-    `;
-    return bars + `
-      <div class="immune-row">
-        <span class="stat-label">Immune</span>
-        <span class="immune-badge ${immunable ? 'immune-on' : 'immune-off'}">${immunable ? 'YES' : 'NO'}</span>
-      </div>`;
-  }
-
-  function renderTanks(tanks) {
-    noTanks.style.display = tanks.length ? 'none' : 'block';
-    const seen = new Set(tanks.map(t => t.id));
-    for (const card of grid.querySelectorAll('.tank-card')) {
-      if (!seen.has(card.dataset.id)) card.remove();
-    }
-    for (const tank of tanks) {
-      let card = grid.querySelector(`.tank-card[data-id="${escHtml(tank.id)}"]`);
-      const wasOnline = card && card.classList.contains('online');
-      if (!card) {
-        card = document.createElement('div');
-        card.className = 'tank-card';
-        card.dataset.id = tank.id;
-        grid.appendChild(card);
-      }
-      card.className = `tank-card ${tank.online ? 'online' : 'offline'}`;
-      if (tank.lastSeen) card.dataset.lastSeen = tank.lastSeen;
-
-      if (card.querySelector('.rename-input') === document.activeElement) {
-        const tel = card.querySelector('.telemetry');
-        if (tel) tel.innerHTML = telemetryHtml(tank.telemetry);
-        continue;
-      }
-
-      const displayName = tank.displayName || tank.id;
-      const showIdLabel = tank.displayName ? `<span class="tank-id-label">(${escHtml(tank.id)})</span>` : '';
-      card.innerHTML = `
-        <div class="tank-header">
-          <div class="status-dot"></div>
-          <span class="tank-name" id="name-${escHtml(tank.id)}">${escHtml(displayName)}</span>
-          ${showIdLabel}
-          <button class="btn-rename" title="Rename" onclick="startRename('${escHtml(tank.id)}')">&#9998;</button>
-          <span class="tank-status-label">${tank.online ? 'ONLINE' : 'OFFLINE'}</span>
-        </div>
-        <div class="tank-meta">${tank.lastSeen ? `Last seen: ${timeSince(tank.lastSeen)}` : ''}</div>
-        <div class="telemetry">${telemetryHtml(tank.telemetry)}</div>
-      `;
-      if (!wasOnline && tank.online) {
-        card.classList.add('pulse');
-        card.addEventListener('animationend', () => card.classList.remove('pulse'), { once: true });
-      }
-    }
-
-    // Refresh CTF Solo tank selector and CTF Teams tank checkboxes
-    refreshTankSelectors();
-  }
-
-  setInterval(() => {
-    for (const card of grid.querySelectorAll('.tank-card[data-last-seen]')) {
-      const meta = card.querySelector('.tank-meta');
-      if (meta) meta.textContent = `Last seen: ${timeSince(Number(card.dataset.lastSeen))}`;
-    }
-  }, 5000);
-
-  // ── Game Control ─────────────────────────────────────────────────────────────
-  const gameStatusBadge = document.getElementById('game-status-badge');
-  const gameTimer       = document.getElementById('game-timer');
-  const btnStart        = document.getElementById('btn-game-start');
-  const btnStop         = document.getElementById('btn-game-stop');
-  const btnReset        = document.getElementById('btn-game-reset');
-  const gameMode        = document.getElementById('game-mode');
-  const gameTimeLimit   = document.getElementById('game-time-limit');
-  const gameScoreTarget = document.getElementById('game-score-target');
-  const scoreTargetGrp  = document.getElementById('score-target-grp');
-  const scoreboardWrap  = document.getElementById('scoreboard-wrap');
-  const scoreboard      = document.getElementById('scoreboard');
-
-  const MODE_LABELS = {
-    free_play:     'Free Play',
-    ctf_teams:     'CTF — Teams',
-    ctf_solo:      'CTF — Solo',
-    treasure_hunt: 'Treasure Hunt',
-    race:          'Race',
-  };
-
-  const REASON_LABELS = {
-    time_up:         "Time's Up!",
-    score_target:    'Score Target Reached!',
-    all_checkpoints: 'All Checkpoints Taken!',
-    manual:          'Round Stopped',
-  };
-
-  // Mode that hides config panels
-  const MODE_CONFIG_PANELS = {
-    ctf_teams:     'config-ctf-teams',
-    ctf_solo:      'config-ctf-solo',
-    treasure_hunt: 'config-treasure-hunt',
-    race:          'config-race',
-  };
-
-  function applyGameState(g) {
-    // Status badge
-    gameStatusBadge.textContent = g.status.toUpperCase();
-    gameStatusBadge.className   = `game-status-badge status-${g.status}`;
-
-    // Buttons
-    const running = g.status === 'running';
-    btnStart.style.display = running ? 'none' : '';
-    btnStop.style.display  = running ? ''     : 'none';
-    btnStart.disabled = g.status === 'running';
-
-    // Config fields — disable while running
-    const locked = g.status === 'running';
-    gameMode.disabled        = locked;
-    gameTimeLimit.disabled   = locked;
-    gameScoreTarget.disabled = locked;
-    document.getElementById('btn-game-config-save').disabled = locked;
-
-    // Sync selects to server state (only if not user-focused)
-    if (document.activeElement !== gameMode)        gameMode.value        = g.mode;
-    if (document.activeElement !== gameTimeLimit)   gameTimeLimit.value   = Math.round(g.timeLimit / 60);
-    if (document.activeElement !== gameScoreTarget) gameScoreTarget.value = g.scoreTarget;
-
-    // Timer
-    if (g.status === 'idle') {
-      gameTimer.textContent = g.timeLimit > 0 ? formatTime(g.timeLimit) : '&#8734;';
-      gameTimer.className   = 'game-timer';
-    } else {
-      updateTimerDisplay(g.timeRemaining, g.timeLimit);
-    }
-
-    // Mode config panels
-    for (const [mode, panelId] of Object.entries(MODE_CONFIG_PANELS)) {
-      const el = document.getElementById(panelId);
-      if (el) el.style.display = g.mode === mode ? '' : 'none';
-    }
-
-    // Score target group: only for treasure_hunt and race
-    scoreTargetGrp.style.display = (g.mode === 'treasure_hunt' || g.mode === 'race') ? '' : 'none';
-
-    // Scoreboard
-    const hasScores = Object.keys(g.scores).length > 0 || g.status !== 'idle';
-    const isCompetitive = g.mode !== 'free_play';
-    scoreboardWrap.style.display = (isCompetitive && (hasScores || g.status !== 'idle')) ? '' : 'none';
-    if (isCompetitive) renderScoreboard(g);
-
-    // Mode-specific config renders
-    renderTeams(g.teams);
-    renderBases(g.bases);
-    renderTreasures(g.treasures);
-    renderCheckpoints(g.checkpoints, g.takenCheckpoints);
-    refreshTankSelectors();
-  }
-
-  function updateTimerDisplay(timeRemaining, timeLimit) {
-    if (window._gameState?.status !== 'running' && window._gameState?.status !== 'ended') return;
-    const tl = timeLimit ?? window._gameState?.timeLimit ?? 0;
-    if (tl === 0) {
-      gameTimer.textContent = '&#8734;';
-      gameTimer.className = 'game-timer running';
-      return;
-    }
-    gameTimer.textContent = formatTime(timeRemaining);
-    if      (timeRemaining <= 0)  gameTimer.className = 'game-timer ending';
-    else if (timeRemaining <= 30) gameTimer.className = 'game-timer ending';
-    else                          gameTimer.className = 'game-timer running';
-  }
-
-  function renderScoreboard(g) {
-    let rows = [];
-
-    if (g.mode === 'ctf_teams') {
-      rows = Object.entries(g.teams).map(([teamId, team]) => ({
-        label: team.name,
-        color: team.color,
-        score: g.scores[teamId] || 0,
-      }));
-    } else {
-      // Gather all scoring participants (tanks in scores, plus all known tanks with 0)
-      const knownIds = new Set([
-        ...Object.keys(g.scores),
-        ...(window._lastTanks || []).map(t => t.id),
-      ]);
-      rows = [...knownIds].map(id => ({
-        label: tankDisplayName(id),
-        color: null,
-        score: g.scores[id] || 0,
-      }));
-    }
-
-    rows.sort((a, b) => b.score - a.score);
-    const maxScore = rows[0]?.score || 0;
-
-    if (!rows.length) {
-      scoreboard.innerHTML = '<div class="list-empty">No scores yet</div>';
-      return;
-    }
-
-    scoreboard.innerHTML = rows.map((r, i) => `
-      <div class="score-row">
-        <span class="score-rank">${i + 1}.</span>
-        ${r.color ? `<span class="team-color-dot" style="background:${escHtml(r.color)}"></span>` : ''}
-        <span class="score-label">${escHtml(r.label)}</span>
-        <span class="score-value ${r.score === maxScore && maxScore > 0 ? 'leader' : ''}">${r.score}</span>
-      </div>`).join('');
-  }
-
-  // ── Game config save ──────────────────────────────────────────────────────────
-  document.getElementById('btn-game-config-save').addEventListener('click', async () => {
-    const mode        = gameMode.value;
-    const timeLimitS  = Math.max(0, Number(gameTimeLimit.value) || 0) * 60;
-    const scoreTarget = Math.max(0, Number(gameScoreTarget.value) || 0);
-    await fetch('/api/game', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mode, timeLimit: timeLimitS, scoreTarget }),
-    });
-  });
-
-  btnStart.addEventListener('click', () => fetch('/api/game/start', { method: 'POST' }));
-  btnStop.addEventListener('click',  () => fetch('/api/game/stop',  { method: 'POST' }));
-  btnReset.addEventListener('click', () => fetch('/api/game/reset', { method: 'POST' }));
-
-  // ── CTF Teams ─────────────────────────────────────────────────────────────────
-  function renderTeams(teams) {
-    const el = document.getElementById('teams-list');
-    const entries = Object.entries(teams);
-    if (!entries.length) {
-      el.innerHTML = '<div class="list-empty">No teams yet. Add one above.</div>';
-      return;
-    }
-    const tanksArr = window._lastTanks || [];
-    el.innerHTML = entries.map(([teamId, team]) => `
-      <div class="team-card" data-team-id="${escHtml(teamId)}">
+      <div class="team-card">
         <div class="team-card-header">
-          <span class="team-color-dot" style="background:${escHtml(team.color)}"></span>
-          <strong>${escHtml(team.name)}</strong>
-          <span class="team-uid">&#127968; ${team.homeUid ? escHtml(team.homeUid) : '<em style="color:#484f58">no base</em>'}</span>
-          <button class="btn btn-danger" style="padding:0.1rem 0.4rem;font-size:0.65rem" onclick="deleteTeam('${escHtml(teamId)}')">&#128465;</button>
+          <div class="team-color-bar" style="background:${esc(team.color)}"></div>
+          <span class="team-card-name">${esc(team.name)}</span>
+          <span class="team-card-uid">&#127968; ${team.homeUid || '<em style="color:#484f58">no base set</em>'}</span>
+          <button class="btn btn-ghost btn-danger" onclick="deleteTeam('${esc(teamId)}')" title="Delete team">&#128465;</button>
         </div>
-        <div class="team-tanks">
-          ${tanksArr.length === 0
-            ? '<span class="list-empty">No tanks online</span>'
-            : tanksArr.map(t => `
-              <label class="tank-checkbox">
-                <input type="checkbox" value="${escHtml(t.id)}"
-                  ${(team.tankIds || []).includes(t.id) ? 'checked' : ''}
-                  onchange="toggleTankInTeam('${escHtml(teamId)}', '${escHtml(t.id)}', this.checked)" />
-                ${escHtml(t.displayName || t.id)}
-              </label>`).join('')
-          }
+        <div class="team-card-body">
+          <div class="team-tanks-label">Tanks in this team</div>
+          <div class="team-tank-list">${chips || '<span style="color:#484f58;font-size:0.7rem;font-style:italic">None assigned</span>'}</div>
+          ${available.filter(t => !(team.tankIds||[]).includes(t.id)).length > 0 ? `
+          <div class="team-tank-add">
+            <select id="tank-add-sel-${esc(teamId)}">${opts}</select>
+            <button class="btn btn-primary" onclick="addTankToTeam('${esc(teamId)}')">+ Add Tank</button>
+          </div>` : '<span style="color:#484f58;font-size:0.7rem;font-style:italic">All online tanks assigned</span>'}
         </div>
-      </div>`).join('');
+      </div>`;
+  }).join('');
+}
+
+async function addTankToTeam(teamId) {
+  const sel = document.getElementById(`tank-add-sel-${teamId}`);
+  if (!sel || !sel.value) return;
+  const team = _gameState?.teams?.[teamId];
+  if (!team) return;
+  const tankIds = [...(team.tankIds || []), sel.value];
+  await api('PUT', `/api/game/teams/${encodeURIComponent(teamId)}`, { ...team, tankIds });
+}
+
+async function removeTankFromTeam(teamId, tankId) {
+  const team = _gameState?.teams?.[teamId];
+  if (!team) return;
+  const tankIds = (team.tankIds || []).filter(id => id !== tankId);
+  await api('PUT', `/api/game/teams/${encodeURIComponent(teamId)}`, { ...team, tankIds });
+}
+
+async function deleteTeam(teamId) {
+  if (!confirm('Delete this team?')) return;
+  await api('DELETE', `/api/game/teams/${encodeURIComponent(teamId)}`);
+}
+
+// ── CTF Solo ──────────────────────────────────────────────────────────────────
+document.getElementById('btn-toggle-base-form').addEventListener('click', function() {
+  const form = document.getElementById('base-form');
+  const open = form.classList.toggle('open');
+  this.textContent = open ? '✕ Cancel' : '＋ Assign Base';
+  if (open) document.getElementById('base-uid').focus();
+});
+document.getElementById('btn-cancel-base-form').addEventListener('click', () => {
+  document.getElementById('base-form').classList.remove('open');
+  document.getElementById('btn-toggle-base-form').textContent = '＋ Assign Base';
+});
+document.getElementById('btn-assign-base').addEventListener('click', async () => {
+  const tankId = document.getElementById('base-tank-select').value;
+  const uid    = document.getElementById('base-uid').value.trim().toUpperCase();
+  if (!tankId || !uid) { alert('Select a tank and enter a UID.'); return; }
+  await api('PUT', `/api/game/bases/${encodeURIComponent(uid)}`, { tankId });
+  document.getElementById('base-uid').value = '';
+  document.getElementById('base-form').classList.remove('open');
+  document.getElementById('btn-toggle-base-form').textContent = '＋ Assign Base';
+});
+
+function renderBases(bases) {
+  const el = document.getElementById('bases-list');
+  const entries = Object.entries(bases);
+  if (!entries.length) {
+    el.innerHTML = '<div class="empty-list">No bases assigned yet — click ＋ Assign Base above.</div>';
+    return;
   }
+  el.innerHTML = entries.map(([uid, tankId]) => `
+    <div class="item-row">
+      <span class="item-uid">${esc(uid)}</span>
+      <span class="item-label">&#127968; ${esc(tankName(tankId))}</span>
+      <button class="btn btn-danger" onclick="deleteBase('${esc(uid)}')">Remove</button>
+    </div>`).join('');
+}
 
-  let _teamIdCounter = Date.now();
-  document.getElementById('btn-add-team').addEventListener('click', async () => {
-    const name    = document.getElementById('team-name').value.trim();
-    const color   = document.getElementById('team-color').value;
-    const homeUid = document.getElementById('team-home-uid').value.trim().toUpperCase();
-    if (!name) { alert('Enter a team name'); return; }
-    const teamId = `team_${_teamIdCounter++}`;
-    await fetch(`/api/game/teams/${encodeURIComponent(teamId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, color, homeUid, tankIds: [] }),
-    });
-    document.getElementById('team-name').value    = '';
-    document.getElementById('team-home-uid').value = '';
-  });
+async function deleteBase(uid) {
+  await api('DELETE', `/api/game/bases/${encodeURIComponent(uid)}`);
+}
 
-  async function deleteTeam(teamId) {
-    await fetch(`/api/game/teams/${encodeURIComponent(teamId)}`, { method: 'DELETE' });
+function refreshTankDropdowns() {
+  const sel = document.getElementById('base-tank-select');
+  const prev = sel.value;
+  sel.innerHTML = _tanks.length === 0
+    ? '<option value="">No tanks online</option>'
+    : _tanks.map(t => `<option value="${esc(t.id)}">${esc(tankName(t.id))}</option>`).join('');
+  if (prev && _tanks.some(t => t.id === prev)) sel.value = prev;
+  // re-render teams to refresh their "Add Tank" dropdowns
+  if (_gameState) renderTeams(_gameState.teams || {});
+}
+
+// ── Treasure Hunt ─────────────────────────────────────────────────────────────
+document.getElementById('btn-toggle-treasure-form').addEventListener('click', function() {
+  const form = document.getElementById('treasure-form');
+  const open = form.classList.toggle('open');
+  this.textContent = open ? '✕ Cancel' : '＋ Add Treasure';
+  if (open) document.getElementById('treasure-uid').focus();
+});
+document.getElementById('btn-cancel-treasure-form').addEventListener('click', () => {
+  document.getElementById('treasure-form').classList.remove('open');
+  document.getElementById('btn-toggle-treasure-form').textContent = '＋ Add Treasure';
+});
+document.getElementById('treasure-action').addEventListener('change', function() {
+  document.getElementById('treasure-av-field').style.display = this.value === 'none' ? 'none' : '';
+});
+document.getElementById('btn-add-treasure').addEventListener('click', async () => {
+  const uid         = document.getElementById('treasure-uid').value.trim().toUpperCase();
+  const label       = document.getElementById('treasure-label').value.trim();
+  const points      = Number(document.getElementById('treasure-points').value) || 0;
+  const action      = document.getElementById('treasure-action').value;
+  const actionValue = Number(document.getElementById('treasure-action-value').value) || 0;
+  if (!uid) { alert('Enter a UID.'); return; }
+  await api('PUT', `/api/game/treasures/${encodeURIComponent(uid)}`, { label: label || uid, points, action, actionValue });
+  document.getElementById('treasure-uid').value   = '';
+  document.getElementById('treasure-label').value = '';
+  document.getElementById('treasure-form').classList.remove('open');
+  document.getElementById('btn-toggle-treasure-form').textContent = '＋ Add Treasure';
+});
+
+function renderTreasures(treasures) {
+  const el = document.getElementById('treasures-list');
+  const entries = Object.entries(treasures);
+  if (!entries.length) {
+    el.innerHTML = '<div class="empty-list">No treasures yet — click ＋ Add Treasure above.</div>';
+    return;
   }
+  el.innerHTML = entries.map(([uid, tr]) => {
+    const artifactHtml = tr.action && tr.action !== 'none'
+      ? `<span class="action-badge action-${esc(tr.action)}">${esc(tr.action)}</span>
+         <span class="item-meta"> ${tr.actionValue >= 0 ? '+' : ''}${tr.actionValue}</span>`
+      : '<span class="item-meta">—</span>';
+    return `
+      <div class="item-row">
+        <span class="item-uid">${esc(uid)}</span>
+        <span class="item-label">${esc(tr.label || uid)}</span>
+        <span class="item-meta" style="color:#f0883e;font-weight:bold">+${tr.points} pts</span>
+        <span style="margin-left:auto">${artifactHtml}</span>
+        <button class="btn btn-danger" onclick="deleteTreasure('${esc(uid)}')">Remove</button>
+      </div>`;
+  }).join('');
+}
 
-  async function toggleTankInTeam(teamId, tankId, checked) {
-    const team = window._gameState?.teams?.[teamId];
-    if (!team) return;
-    const tankIds = [...(team.tankIds || [])];
-    if (checked  && !tankIds.includes(tankId)) tankIds.push(tankId);
-    if (!checked) { const idx = tankIds.indexOf(tankId); if (idx !== -1) tankIds.splice(idx, 1); }
-    await fetch(`/api/game/teams/${encodeURIComponent(teamId)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...team, tankIds }),
-    });
+async function deleteTreasure(uid) {
+  await api('DELETE', `/api/game/treasures/${encodeURIComponent(uid)}`);
+}
+
+// ── Race ──────────────────────────────────────────────────────────────────────
+document.getElementById('btn-toggle-cp-form').addEventListener('click', function() {
+  const form = document.getElementById('cp-form');
+  const open = form.classList.toggle('open');
+  this.textContent = open ? '✕ Cancel' : '＋ Add Checkpoint';
+  if (open) document.getElementById('cp-uid').focus();
+});
+document.getElementById('btn-cancel-cp-form').addEventListener('click', () => {
+  document.getElementById('cp-form').classList.remove('open');
+  document.getElementById('btn-toggle-cp-form').textContent = '＋ Add Checkpoint';
+});
+document.getElementById('btn-add-cp').addEventListener('click', async () => {
+  const uid = document.getElementById('cp-uid').value.trim().toUpperCase();
+  if (!uid) { alert('Enter a UID.'); return; }
+  const existing = _gameState?.checkpoints || [];
+  if (existing.includes(uid)) { alert('This UID is already a checkpoint.'); return; }
+  await api('PUT', '/api/game/checkpoints', { uids: [...existing, uid] });
+  document.getElementById('cp-uid').value    = '';
+  document.getElementById('cp-label').value  = '';
+  document.getElementById('cp-form').classList.remove('open');
+  document.getElementById('btn-toggle-cp-form').textContent = '＋ Add Checkpoint';
+});
+
+function renderCheckpoints(checkpoints, taken) {
+  const el = document.getElementById('checkpoints-list');
+  if (!checkpoints.length) {
+    el.innerHTML = '<div class="empty-list">No checkpoints yet — click ＋ Add Checkpoint above.</div>';
+    return;
   }
+  el.innerHTML = checkpoints.map((uid, i) => {
+    const taker = taken?.[uid];
+    return `
+      <div class="item-row">
+        <div class="cp-order">${i + 1}</div>
+        <span class="item-uid">${esc(uid)}</span>
+        <span class="item-label"></span>
+        ${taker
+          ? `<span class="cp-taken-by">&#10003; ${esc(tankName(taker))}</span>`
+          : '<span class="item-meta">unclaimed</span>'}
+        <button class="btn btn-danger" onclick="removeCheckpoint('${esc(uid)}')">Remove</button>
+      </div>`;
+  }).join('');
+}
 
-  // ── CTF Solo ──────────────────────────────────────────────────────────────────
-  function renderBases(bases) {
-    const el = document.getElementById('bases-list');
-    const entries = Object.entries(bases);
-    if (!entries.length) {
-      el.innerHTML = '<div class="list-empty">No home bases assigned yet.</div>';
-      return;
-    }
-    el.innerHTML = `
-      <table class="game-table">
-        <thead><tr><th>UID</th><th>Tank</th><th></th></tr></thead>
-        <tbody>
-          ${entries.map(([uid, tankId]) => `
-            <tr>
-              <td class="uid-cell">${escHtml(uid)}</td>
-              <td>${escHtml(tankDisplayName(tankId))}</td>
-              <td><button class="btn btn-danger" style="padding:0.1rem 0.4rem;font-size:0.65rem"
-                onclick="deleteBase('${escHtml(uid)}')">&#128465;</button></td>
-            </tr>`).join('')}
-        </tbody>
-      </table>`;
-  }
+async function removeCheckpoint(uid) {
+  const updated = (_gameState?.checkpoints || []).filter(u => u !== uid);
+  await api('PUT', '/api/game/checkpoints', { uids: updated });
+}
 
-  function refreshTankSelectors() {
-    const tanksArr = window._lastTanks || [];
-    const sel = document.getElementById('base-tank-select');
-    const prev = sel.value;
-    sel.innerHTML = tanksArr.length === 0
-      ? '<option value="">No tanks online</option>'
-      : tanksArr.map(t => `<option value="${escHtml(t.id)}">${escHtml(t.displayName || t.id)}</option>`).join('');
-    if (prev && tanksArr.some(t => t.id === prev)) sel.value = prev;
+// ── Game End overlay ──────────────────────────────────────────────────────────
+document.getElementById('btn-end-dismiss').addEventListener('click', () => {
+  document.getElementById('game-end-overlay').classList.remove('show');
+});
 
-    // Also re-render team tank checkboxes (they depend on _lastTanks)
-    if (window._gameState) renderTeams(window._gameState.teams || {});
-  }
+function showGameEnd(g, reason) {
+  document.getElementById('game-end-title').textContent = REASON_LABELS[reason] || 'Round Over!';
+  document.getElementById('game-end-mode').textContent  = `Mode: ${MODE_LABELS[g.mode] || g.mode}`;
 
-  document.getElementById('btn-add-base').addEventListener('click', async () => {
-    const tankId = document.getElementById('base-tank-select').value;
-    const uid    = document.getElementById('base-uid').value.trim().toUpperCase();
-    if (!tankId || !uid) { alert('Select a tank and enter a UID'); return; }
-    await fetch(`/api/game/bases/${encodeURIComponent(uid)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tankId }),
-    });
-    document.getElementById('base-uid').value = '';
-  });
+  const scores   = g.scores;
+  const maxScore = Math.max(...Object.values(scores), 0);
+  let winnerText = 'No scores recorded.';
 
-  async function deleteBase(uid) {
-    await fetch(`/api/game/bases/${encodeURIComponent(uid)}`, { method: 'DELETE' });
-  }
-
-  // ── Treasure Hunt ─────────────────────────────────────────────────────────────
-  function renderTreasures(treasures) {
-    const el = document.getElementById('treasures-list');
-    const entries = Object.entries(treasures);
-    if (!entries.length) {
-      el.innerHTML = '<div class="list-empty">No treasures configured yet.</div>';
-      return;
-    }
-    el.innerHTML = `
-      <table class="game-table">
-        <thead><tr><th>UID</th><th>Label</th><th>Points</th><th>Artifact</th><th></th></tr></thead>
-        <tbody>
-          ${entries.map(([uid, tr]) => `
-            <tr>
-              <td class="uid-cell">${escHtml(uid)}</td>
-              <td>${escHtml(tr.label || uid)}</td>
-              <td style="color:#f0883e;font-weight:bold">+${tr.points}</td>
-              <td>
-                ${tr.action && tr.action !== 'none'
-                  ? `<span class="action-badge action-${escHtml(tr.action)}">${escHtml(tr.action)}</span>
-                     <span style="color:#8b949e;font-size:0.68rem"> ${tr.actionValue >= 0 ? '+' : ''}${tr.actionValue}</span>`
-                  : '<span style="color:#484f58">—</span>'}
-              </td>
-              <td><button class="btn btn-danger" style="padding:0.1rem 0.4rem;font-size:0.65rem"
-                onclick="deleteTreasure('${escHtml(uid)}')">&#128465;</button></td>
-            </tr>`).join('')}
-        </tbody>
-      </table>`;
-  }
-
-  document.getElementById('treasure-action').addEventListener('change', function() {
-    document.getElementById('treasure-av-grp').style.display = this.value === 'none' ? 'none' : '';
-  });
-
-  document.getElementById('btn-add-treasure').addEventListener('click', async () => {
-    const uid         = document.getElementById('treasure-uid').value.trim().toUpperCase();
-    const label       = document.getElementById('treasure-label').value.trim();
-    const points      = Number(document.getElementById('treasure-points').value) || 0;
-    const action      = document.getElementById('treasure-action').value;
-    const actionValue = Number(document.getElementById('treasure-action-value').value) || 0;
-    if (!uid) { alert('Enter a UID'); return; }
-    await fetch(`/api/game/treasures/${encodeURIComponent(uid)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ label: label || uid, points, action, actionValue }),
-    });
-    document.getElementById('treasure-uid').value   = '';
-    document.getElementById('treasure-label').value = '';
-  });
-
-  async function deleteTreasure(uid) {
-    await fetch(`/api/game/treasures/${encodeURIComponent(uid)}`, { method: 'DELETE' });
-  }
-
-  // ── Race ──────────────────────────────────────────────────────────────────────
-  function renderCheckpoints(checkpoints, takenCheckpoints) {
-    const el = document.getElementById('checkpoints-list');
-    if (!checkpoints.length) {
-      el.innerHTML = '<div class="list-empty">No checkpoints added yet.</div>';
-      return;
-    }
-    el.innerHTML = `
-      <table class="game-table">
-        <thead><tr><th>#</th><th>UID</th><th>Status</th><th></th></tr></thead>
-        <tbody>
-          ${checkpoints.map((uid, i) => {
-            const taker = takenCheckpoints?.[uid];
-            return `
-              <tr>
-                <td style="color:#484f58">${i + 1}</td>
-                <td class="uid-cell">${escHtml(uid)}</td>
-                <td>
-                  ${taker
-                    ? `<span class="cp-badge cp-taken">&#10003; ${escHtml(tankDisplayName(taker))}</span>`
-                    : '<span class="cp-badge">waiting</span>'}
-                </td>
-                <td><button class="btn btn-danger" style="padding:0.1rem 0.4rem;font-size:0.65rem"
-                  onclick="removeCheckpoint('${escHtml(uid)}')">&#128465;</button></td>
-              </tr>`;
-          }).join('')}
-        </tbody>
-      </table>`;
-  }
-
-  document.getElementById('btn-add-cp').addEventListener('click', async () => {
-    const uid = document.getElementById('cp-uid').value.trim().toUpperCase();
-    if (!uid) { alert('Enter a UID'); return; }
-    const existing = window._gameState?.checkpoints || [];
-    if (!existing.includes(uid)) {
-      await fetch('/api/game/checkpoints', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ uids: [...existing, uid] }),
-      });
-    }
-    document.getElementById('cp-uid').value = '';
-  });
-
-  async function removeCheckpoint(uid) {
-    const existing = (window._gameState?.checkpoints || []).filter(u => u !== uid);
-    await fetch('/api/game/checkpoints', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uids: existing }),
-    });
-  }
-
-  // ── Game End overlay ──────────────────────────────────────────────────────────
-  document.getElementById('btn-game-end-dismiss').addEventListener('click', () => {
-    document.getElementById('game-end-overlay').classList.remove('show');
-  });
-
-  function showGameEnd(g, reason) {
-    document.getElementById('game-end-title').textContent  = REASON_LABELS[reason] || 'Round Over!';
-    document.getElementById('game-end-reason').textContent = `Mode: ${MODE_LABELS[g.mode] || g.mode}`;
-
-    // Find winner(s)
-    const scores = g.scores;
-    const maxScore = Math.max(...Object.values(scores), 0);
-    let winnerText = 'No scores recorded';
-
-    if (maxScore > 0) {
-      if (g.mode === 'ctf_teams') {
-        const winners = Object.entries(g.teams)
-          .filter(([teamId]) => (scores[teamId] || 0) === maxScore)
-          .map(([, team]) => team.name);
-        winnerText = winners.length ? `&#127942; ${winners.join(' & ')}` : 'No winner';
-      } else {
-        const winnerIds = Object.entries(scores)
-          .filter(([, s]) => s === maxScore)
-          .map(([id]) => tankDisplayName(id));
-        winnerText = winnerIds.length ? `&#127942; ${winnerIds.join(' & ')}` : 'No winner';
-      }
-    }
-    document.getElementById('game-end-winner').innerHTML = winnerText;
-
-    // Final scoreboard
-    const scoresEl = document.getElementById('game-end-scores');
-    let rows = [];
+  if (maxScore > 0) {
     if (g.mode === 'ctf_teams') {
-      rows = Object.entries(g.teams).map(([teamId, team]) => ({
-        label: team.name, color: team.color, score: scores[teamId] || 0,
-      }));
+      const winners = Object.entries(g.teams)
+        .filter(([id]) => (scores[id] || 0) === maxScore)
+        .map(([, t]) => t.name);
+      winnerText = winners.length ? `🏆 ${winners.join(' & ')}` : '';
     } else {
-      const allIds = new Set([
-        ...Object.keys(scores),
-        ...(window._lastTanks || []).map(t => t.id),
-      ]);
-      rows = [...allIds].map(id => ({ label: tankDisplayName(id), color: null, score: scores[id] || 0 }));
+      const ids = Object.entries(scores).filter(([, s]) => s === maxScore).map(([id]) => tankName(id));
+      winnerText = ids.length ? `🏆 ${ids.join(' & ')}` : '';
     }
-    rows.sort((a, b) => b.score - a.score);
-    scoresEl.innerHTML = rows.map((r, i) => `
-      <div class="score-row">
-        <span class="score-rank">${i + 1}.</span>
-        ${r.color ? `<span class="team-color-dot" style="background:${escHtml(r.color)}"></span>` : ''}
-        <span class="score-label">${escHtml(r.label)}</span>
-        <span class="score-value ${r.score === maxScore && maxScore > 0 ? 'leader' : ''}">${r.score}</span>
-      </div>`).join('');
-
-    document.getElementById('game-end-overlay').classList.add('show');
   }
+  document.getElementById('game-end-winner').innerHTML = esc(winnerText).replace('🏆', '&#127942;');
 
-  // ── RFID table ───────────────────────────────────────────────────────────────
-  const rfidTbody = document.getElementById('rfid-tbody');
-  const rfidCount = document.getElementById('rfid-count');
-
-  function actionBadge(action) {
-    return `<span class="action-badge action-${escHtml(action)}">${escHtml(action)}</span>`;
+  // Final scores
+  let rows = [];
+  if (g.mode === 'ctf_teams') {
+    rows = Object.entries(g.teams).map(([id, t]) => ({ label: t.name, color: t.color, score: scores[id] || 0 }));
+  } else {
+    const ids = new Set([...Object.keys(scores), ..._tanks.map(t => t.id)]);
+    rows = [...ids].map(id => ({ label: tankName(id), color: null, score: scores[id] || 0 }));
   }
+  rows.sort((a, b) => b.score - a.score);
+  document.getElementById('game-end-scores').innerHTML = rows.map((r, i) => `
+    <div class="score-row">
+      <span class="score-rank">${i + 1}</span>
+      ${r.color ? `<span class="team-dot" style="background:${esc(r.color)}"></span>` : ''}
+      <span class="score-name">${esc(r.label)}</span>
+      <span class="score-pts ${r.score === maxScore && maxScore > 0 ? 'leader' : ''}">${r.score}</span>
+    </div>`).join('');
 
-  function recipientBadge(r) {
-    return `<span class="recipient-badge">${escHtml(r)}</span>`;
+  document.getElementById('game-end-overlay').classList.add('show');
+}
+
+// ── RFID table ────────────────────────────────────────────────────────────────
+function renderRfidTable(actions) {
+  const tbody = document.getElementById('rfid-tbody');
+  const count = document.getElementById('rfid-count');
+  const entries = Object.entries(actions);
+  count.textContent = `${entries.length} rule${entries.length !== 1 ? 's' : ''}`;
+  if (!entries.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="padding:1.5rem;text-align:center;color:#484f58;font-style:italic">No RFID rules yet.</td></tr>';
+    return;
   }
+  tbody.innerHTML = entries.map(([uid, r]) => {
+    const valHtml = r.action === 'win'
+      ? '<span style="color:#484f58">—</span>'
+      : `<span class="rfid-value ${r.value >= 0 ? 'pos' : 'neg'}">${r.value >= 0 ? '+' : ''}${r.value}</span>`;
+    return `<tr>
+      <td class="rfid-uid">${esc(uid)}</td>
+      <td><span class="action-badge action-${esc(r.action)}">${esc(r.action)}</span></td>
+      <td><span class="recipient-badge">${esc(r.recipient)}</span></td>
+      <td>${valHtml}</td>
+      <td><button class="btn btn-danger" onclick="deleteRfid('${esc(uid)}')">Delete</button></td>
+    </tr>`;
+  }).join('');
+}
 
-  function renderRfidTable(actions) {
-    const entries = Object.entries(actions);
-    const n = entries.length;
-    rfidCount.textContent = `${n} rule${n !== 1 ? 's' : ''}`;
+async function deleteRfid(uid) {
+  await api('DELETE', `/api/rfid/${encodeURIComponent(uid)}`);
+}
 
-    if (n === 0) {
-      rfidTbody.innerHTML = '<tr><td colspan="5" id="rfid-empty">No RFID rules yet. Add one below.</td></tr>';
-      return;
-    }
+// ── RFID form ─────────────────────────────────────────────────────────────────
+document.getElementById('form-action').addEventListener('change', function() {
+  document.getElementById('form-value-group').style.display = this.value === 'win' ? 'none' : '';
+});
 
-    rfidTbody.innerHTML = entries.map(([uid, rule]) => {
-      const { action, recipient, value } = rule;
-      const valueStr = action === 'win'
-        ? '<span style="color:#484f58">—</span>'
-        : `<span class="rfid-value ${value >= 0 ? 'pos' : 'neg'}">${value >= 0 ? '+' : ''}${value}</span>`;
-      return `
-        <tr>
-          <td class="rfid-uid">${escHtml(uid)}</td>
-          <td>${actionBadge(action)}</td>
-          <td>${recipientBadge(recipient)}</td>
-          <td>${valueStr}</td>
-          <td><button class="btn btn-danger" onclick="deleteRfid('${escHtml(uid)}')">Delete</button></td>
-        </tr>`;
-    }).join('');
+document.getElementById('rfid-save').addEventListener('click', async () => {
+  const uid       = document.getElementById('form-uid').value.trim().toUpperCase();
+  const action    = document.getElementById('form-action').value;
+  const recipient = document.getElementById('form-recipient').value;
+  const value     = action === 'win' ? 0 : Number(document.getElementById('form-value').value);
+  const errEl     = document.getElementById('form-error');
+  errEl.style.display = 'none';
+  if (!uid) { errEl.textContent = 'UID is required'; errEl.style.display = 'block'; return; }
+  const res = await api('POST', '/api/rfid', { uid, action, recipient, value });
+  if (res.ok) {
+    document.getElementById('form-uid').value   = '';
+    document.getElementById('form-value').value = '';
+  } else {
+    errEl.textContent = 'Failed to save.'; errEl.style.display = 'block';
   }
+});
 
-  async function deleteRfid(uid) {
-    await fetch(`/api/rfid/${encodeURIComponent(uid)}`, { method: 'DELETE' });
-  }
+// ── Telemetry log ─────────────────────────────────────────────────────────────
+const logList  = document.getElementById('log-list');
+const logCount = document.getElementById('log-count');
+document.getElementById('log-clear').addEventListener('click', () => {
+  logList.innerHTML = '';
+  logCount.textContent = '0 entries';
+});
 
-  // ── RFID form ─────────────────────────────────────────────────────────────────
-  const formUid       = document.getElementById('form-uid');
-  const formAction    = document.getElementById('form-action');
-  const formRecipient = document.getElementById('form-recipient');
-  const formValue     = document.getElementById('form-value');
-  const formValueGrp  = document.getElementById('form-value-group');
-  const formError     = document.getElementById('form-error');
-  const rfidSave      = document.getElementById('rfid-save');
+function appendLog({ tankId, receivedAt, payload }) {
+  const type = payload?.event?.type || 'unknown';
+  const ts   = new Date(receivedAt).toISOString().replace('T', ' ').slice(0, -1) + 'Z';
+  const entry = document.createElement('div');
+  entry.className = `log-entry type-${type}`;
+  entry.innerHTML = `
+    <div class="log-meta">
+      <span class="log-tank">${esc(tankId)}</span>
+      <span class="log-type type-${type}">${esc(type)}</span>
+      <span>${esc(ts)}</span>
+    </div>
+    <pre class="log-json">${esc(JSON.stringify(payload, null, 2))}</pre>`;
+  logList.insertBefore(entry, logList.firstChild);
+  while (logList.children.length > 100) logList.removeChild(logList.lastChild);
+  const n = logList.children.length;
+  logCount.textContent = `${n} entr${n === 1 ? 'y' : 'ies'}`;
+}
 
-  formAction.addEventListener('change', () => {
-    formValueGrp.style.display = formAction.value === 'win' ? 'none' : '';
-  });
+// ── Win overlay ───────────────────────────────────────────────────────────────
+function showWinOverlay({ tankId, recipient }) {
+  const labels = {
+    tank:     `Tank ${tankId} wins!`,
+    others:   `All except ${tankId} win!`,
+    teammate: `${tankId}'s team wins!`,
+    all:      'Everyone wins!',
+  };
+  document.getElementById('win-sub').textContent = labels[recipient] || `${tankId} triggered a win!`;
+  document.getElementById('win-overlay').classList.add('show');
+}
 
-  rfidSave.addEventListener('click', async () => {
-    formError.style.display = 'none';
-    const uid       = formUid.value.trim().toUpperCase();
-    const action    = formAction.value;
-    const recipient = formRecipient.value;
-    const value     = action === 'win' ? 0 : Number(formValue.value);
-
-    if (!uid) { showFormError('UID is required'); return; }
-    if (action !== 'win' && isNaN(Number(formValue.value))) {
-      showFormError('Value must be a number'); return;
-    }
-
-    const res = await fetch('/api/rfid', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ uid, action, recipient, value }),
-    });
-
-    if (res.ok) {
-      formUid.value   = '';
-      formValue.value = '';
-    } else {
-      showFormError('Failed to save. Check all fields.');
-    }
-  });
-
-  function showFormError(msg) {
-    formError.textContent = msg;
-    formError.style.display = 'block';
-  }
-
-  // ── Telemetry log ─────────────────────────────────────────────────────────────
-  const logList  = document.getElementById('log-list');
-  const logCount = document.getElementById('log-count');
-  const logClear = document.getElementById('log-clear');
-  const MAX_LOG  = 100;
-
-  logClear.addEventListener('click', () => {
-    logList.innerHTML = '';
-    logCount.textContent = '0 entries';
-  });
-
-  function appendLog({ tankId, receivedAt, payload }) {
-    const eventType = payload?.event?.type || 'unknown';
-    const ts = new Date(receivedAt).toISOString().replace('T', ' ').slice(0, -1) + 'Z';
-    const entry = document.createElement('div');
-    entry.className = `log-entry type-${eventType}`;
-    entry.innerHTML = `
-      <div class="log-meta">
-        <span class="log-tank">${escHtml(tankId)}</span>
-        <span class="log-type type-${eventType}">${escHtml(eventType)}</span>
-        <span>${escHtml(ts)}</span>
-      </div>
-      <pre class="log-json">${escHtml(JSON.stringify(payload, null, 2))}</pre>
-    `;
-    logList.insertBefore(entry, logList.firstChild);
-    while (logList.children.length > MAX_LOG) logList.removeChild(logList.lastChild);
-    const n = logList.children.length;
-    logCount.textContent = `${n} entr${n === 1 ? 'y' : 'ies'}`;
-  }
-
-  // ── Win overlay ───────────────────────────────────────────────────────────────
-  const winOverlay = document.getElementById('win-overlay');
-  const winSub     = document.getElementById('win-sub');
-
-  document.getElementById('win-dismiss').addEventListener('click', () => {
-    winOverlay.classList.remove('show');
-  });
-
-  function showWin({ tankId, recipient }) {
-    const recipientLabel = {
-      tank:     `Tank ${tankId} wins!`,
-      others:   `All tanks except ${tankId} win!`,
-      teammate: `${tankId}'s team wins!`,
-      all:      'Everyone wins!',
-    }[recipient] || `${tankId} triggered a win!`;
-    winSub.textContent = recipientLabel;
-    winOverlay.classList.add('show');
-  }
-
-  // ── Tank rename ───────────────────────────────────────────────────────────────
-  function startRename(tankId) {
-    const card = grid.querySelector(`.tank-card[data-id="${escHtml(tankId)}"]`);
-    if (!card) return;
-    const header = card.querySelector('.tank-header');
-    const currentName = card.querySelector(`#name-${escHtml(tankId)}`).textContent;
-
-    header.innerHTML = `
-      <div class="status-dot"></div>
-      <div class="rename-form">
-        <input class="rename-input" id="rename-input-${escHtml(tankId)}"
-               type="text" value="${escHtml(currentName)}" maxlength="32" />
-        <button class="rename-ok"     onclick="commitRename('${escHtml(tankId)}')">&#10004;</button>
-        <button class="rename-cancel" onclick="cancelRename('${escHtml(tankId)}')">&#10006;</button>
-      </div>
-    `;
-    const input = document.getElementById(`rename-input-${tankId}`);
-    input.focus();
-    input.select();
-    input.addEventListener('keydown', e => {
-      if (e.key === 'Enter')  commitRename(tankId);
-      if (e.key === 'Escape') cancelRename(tankId);
-    });
-  }
-
-  async function commitRename(tankId) {
-    const input = document.getElementById(`rename-input-${tankId}`);
-    if (!input) return;
-    const name = input.value.trim();
-    await fetch(`/api/tanks/${encodeURIComponent(tankId)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ displayName: name }),
-    });
-  }
-
-  function cancelRename(tankId) {
-    if (window._lastTanks) renderTanks(window._lastTanks);
-  }
-
-  connect();
+// ── Boot ──────────────────────────────────────────────────────────────────────
+// Show Free Play panel immediately so the page is useful before WS connects
+selectMode('free_play', false);
+connect();
 </script>
 </body>
 </html>
