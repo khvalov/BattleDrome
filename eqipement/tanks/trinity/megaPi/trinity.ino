@@ -59,7 +59,7 @@ unsigned long lastRfidTime = 0;
 int  health    = 100;
 int  ammo      = 100;
 int  ammoLevel = 3;    // 1–10: damage per shot (also sent in IR frame cmd byte)
-int  fireSpeed = 5;    // 1–10: minimum ms between shots
+int  fireSpeed = 6;    // 1–10: minimum ms between shots
 bool immunable = false;
 
 // ── Health-based speed scaling ─────────────────────────────────────────────────

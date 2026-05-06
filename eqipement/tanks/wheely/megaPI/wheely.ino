@@ -71,8 +71,8 @@ unsigned long lastRfidTime = 0;
 // ── Game state ─────────────────────────────────────────────────────────────────
 int  health    = 100;
 int  ammo      = 100;
-int  ammoLevel = 3;    // 1–10
-int  fireSpeed = 5;    // 1–10: minimum ms between shots
+int  ammoLevel = 1;    // 1–10
+int  fireSpeed = 1;    // 1–10: minimum ms between shots
 bool immunable = false;
 
 // ── Death / respawn ────────────────────────────────────────────────────────────
