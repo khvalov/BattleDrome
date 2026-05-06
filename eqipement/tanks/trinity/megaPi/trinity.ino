@@ -5,6 +5,7 @@
 #include <MeMegaPi.h>   // includes MeRGBLed — not used on Trinity
 #include <MePS2.h>
 #include <IRremote.h>   // Library Manager: "IRremote" by shirriff / z3t0 / ArminJo
+#include <ArduinoJson.h>  // Library Manager: "ArduinoJson" by Benoit Blanchon
 
 // ── Tank settings ──────────────────────────────────────────────────────────────
 const char TANK_ID[]   = "TRNA1";   // Unique identifier, up to 6 characters
@@ -21,8 +22,8 @@ const int SIGN_R = -1;
 
 MePS2 MePS2(PORT_15);
 
-int maxSpeed = 160;  // max PWM — reserved for future RPi commands
-int minSpeed = 20;   // minimum PWM when moving — reserved for future RPi commands
+int maxSpeed = 160;  // max PWM — overridable via command
+int minSpeed = 20;   // minimum PWM when moving — overridable via command
 const int DEADZONE = 20;
 
 // ── IR transmitter (NEC software, same as wheely) ─────────────────────────────
@@ -54,7 +55,7 @@ String        lastRfidUid  = "";
 unsigned long lastRfidTime = 0;
 
 // ── Game state ─────────────────────────────────────────────────────────────────
-// Kept in the same shape as wheely so adding RPi/Serial2 later is a drop-in.
+// Kept in the same shape as wheely so RPi/Serial2 commands are a drop-in.
 int  health    = 100;
 int  ammo      = 100;
 int  ammoLevel = 3;    // 1–10: damage per shot (also sent in IR frame cmd byte)
@@ -92,10 +93,19 @@ float speedL = 0, speedR = 0;
 unsigned long lastFireTime   = 0;
 bool          squarePrevious = false;
 
-// ── Status print interval ──────────────────────────────────────────────────────
-// Replaces Serial2 telemetry — prints health/ammo/speed to USB serial.
-const unsigned long STATUS_INTERVAL_MS = 500;
-unsigned long lastStatus = 0;
+// ── Telemetry timing ───────────────────────────────────────────────────────────
+const unsigned long TELEMETRY_INTERVAL_MS = 500;
+unsigned long lastTelemetry = 0;
+
+// ── RPi connectivity ping ──────────────────────────────────────────────────────
+// Arduino sends a ping every PING_INTERVAL_MS; RPi replies with pong.
+// On first pong/connected/heartbeat, rpiConnected becomes true.
+const unsigned long PING_INTERVAL_MS = 5000;
+unsigned long lastPing     = 0;
+bool          rpiConnected = false;
+
+// ── Command buffer (Serial2 ← RPi) ────────────────────────────────────────────
+String cmdBuffer = "";
 
 // ── Drive ──────────────────────────────────────────────────────────────────────
 void stopAll() {
@@ -242,8 +252,6 @@ void handleIRReceive() {
 
 // ── RFID ───────────────────────────────────────────────────────────────────────
 // Returns uppercase hex UID, or "" if no new card / same card within cooldown.
-// NOTE: no RPi yet — UIDs are printed to Serial only.
-//       When Serial2 is wired, add sendRfidEvent() here (see wheely.ino).
 String readRfidUid(unsigned long now) {
   if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return "";
 
@@ -263,23 +271,121 @@ String readRfidUid(unsigned long now) {
   return uid;
 }
 
-// ── Status print (USB serial — replaces Serial2 telemetry) ───────────────────
-void printStatus(unsigned long now) {
-  if (now - lastStatus < STATUS_INTERVAL_MS) return;
-  lastStatus = now;
+// ── Serial2 — outgoing messages ───────────────────────────────────────────────
 
+// Ping: minimal fixed-size string — no ArduinoJson overhead needed.
+void sendPing() {
+  Serial2.print(F("{\"event\":{\"type\":\"system\",\"action\":\"ping\"}}\r\n"));
+}
+
+void sendRfidEvent(const String& uid) {
+  StaticJsonDocument<200> doc;
+  doc["timestamp"] = millis() / 1000;
+  JsonObject event = doc.createNestedObject("event");
+  event["type"] = "rfid";
+  JsonObject data = event.createNestedObject("data");
+  data["tankId"]   = TANK_ID;
+  data["tankType"] = TANK_TYPE;
+  data["uid"]      = uid;
+
+  serializeJson(doc, Serial2);
+  Serial2.print("\r\n");
+}
+
+void sendTelemetry() {
   int avgSpeed = (int)((speedL + speedR) / 2.0f);
-  Serial.print(F("[STATUS] HP:"));      Serial.print(health);
-  Serial.print(F(" Ammo:"));            Serial.print(ammo);
-  Serial.print(F(" AmmoLv:"));          Serial.print(ammoLevel);
-  Serial.print(F(" Speed:"));           Serial.print(avgSpeed);
-  Serial.print(F(" MaxSpd:"));          Serial.print((int)currentMaxSpeed);
-  Serial.print(F(" Immune:"));          Serial.println(immunable ? F("Y") : F("N"));
+
+  StaticJsonDocument<384> doc;
+  doc["timestamp"] = millis() / 1000;
+  JsonObject event = doc.createNestedObject("event");
+  event["type"] = "telemetry";
+  JsonObject data = event.createNestedObject("data");
+  data["tankId"]    = TANK_ID;
+  data["tankType"]  = TANK_TYPE;
+  data["speed"]     = avgSpeed;
+  data["health"]    = health;
+  data["ammo"]      = ammo;
+  data["ammoLevel"] = ammoLevel;
+  data["fireSpeed"] = fireSpeed;
+  data["immunable"] = immunable;
+  data["maxSpeed"]  = maxSpeed;
+  data["minSpeed"]  = minSpeed;
+
+  serializeJson(doc, Serial2);
+  Serial2.print("\r\n");
+}
+
+void sendFireEvent() {
+  StaticJsonDocument<200> doc;
+  doc["timestamp"] = millis() / 1000;
+  JsonObject event = doc.createNestedObject("event");
+  event["type"] = "fire";
+  JsonObject data = event.createNestedObject("data");
+  data["tankId"]    = TANK_ID;
+  data["tankType"]  = TANK_TYPE;
+  data["senderId"]  = TANK_ID;
+  data["ammoLevel"] = ammoLevel;
+  data["ammo"]      = ammo;
+
+  serializeJson(doc, Serial2);
+  Serial2.print("\r\n");
+}
+
+// ── Serial2 — incoming handler (commands + system events from RPi) ────────────
+void handleSerialLine(const String& line) {
+  StaticJsonDocument<256> doc;
+  DeserializationError err = deserializeJson(doc, line);
+  if (err != DeserializationError::Ok) {
+    Serial.print(F("[UART] JSON error: ")); Serial.println(err.c_str());
+    return;
+  }
+
+  JsonObject ev = doc["event"];
+  if (!ev) return;
+  const char* type = ev["type"] | "";
+
+  // ── command ──────────────────────────────────────────────────────────────────
+  if (strcmp(type, "command") == 0) {
+    const char* param = ev["param"] | "";
+    int value = ev["value"] | 0;
+
+    if (strcmp(param, "health") == 0) {
+      health = constrain(value, 0, 100);
+      updateSpeedFromHealth();   // Trinity: speed scales with health
+    }
+    else if (strcmp(param, "ammo")      == 0)  ammo      = constrain(value, 0, 100);
+    else if (strcmp(param, "ammoLevel") == 0)  ammoLevel = constrain(value, 1, 10);
+    else if (strcmp(param, "fireSpeed") == 0)  fireSpeed = constrain(value, 1, 10);
+    else if (strcmp(param, "immunable") == 0)  immunable = (value != 0);
+    else if (strcmp(param, "maxSpeed")  == 0) {
+      maxSpeed = constrain(value, 1, 255);
+      updateSpeedFromHealth();   // recalculate cap at new maxSpeed
+    }
+    else if (strcmp(param, "minSpeed")  == 0)  minSpeed  = constrain(value, 0, 255);
+
+    Serial.print(F("[CMD] ")); Serial.print(param);
+    Serial.print(F(" = "));   Serial.println(value);
+
+  // ── system ───────────────────────────────────────────────────────────────────
+  } else if (strcmp(type, "system") == 0) {
+    const char* action = ev["action"] | "";
+    // "pong"      — RPi replied to our periodic ping (primary path).
+    // "connected" — legacy one-shot sent when RPi MQTT connects.
+    // "heartbeat" — fallback (only sent to MQTT, not serial, but kept for safety).
+    if (!rpiConnected &&
+        (strcmp(action, "pong")      == 0 ||
+         strcmp(action, "connected") == 0 ||
+         strcmp(action, "heartbeat") == 0)) {
+      rpiConnected = true;
+      Serial.println(F("[SYS] RPi alive — telemetry active"));
+    }
+  }
 }
 
 // ── Setup ──────────────────────────────────────────────────────────────────────
 void setup() {
-  Serial.begin(115200);   // USB debug — only serial; no Serial2 until RPi added
+  Serial.begin(115200);   // USB debug
+  Serial2.begin(115200);  // Raspberry Pi via UART
 
   // IR transmitter
   pinMode(IR_TX_PIN, OUTPUT);
@@ -313,8 +419,8 @@ void setup() {
   updateSpeedFromHealth();
 
   Serial.println(F("================================="));
-  Serial.println(F("  Trinity ready — LOCAL mode     "));
-  Serial.println(F("  (no RPi; Serial2 not started)  "));
+  Serial.println(F("  Trinity ready — RPi mode       "));
+  Serial.println(F("  Serial2 @ 115200 → Raspberry Pi"));
   Serial.println(F("  Square → fire IR               "));
   Serial.println(F("  START  → respawn               "));
   Serial.println(F("================================="));
@@ -323,6 +429,18 @@ void setup() {
 // ── Loop ───────────────────────────────────────────────────────────────────────
 void loop() {
   unsigned long now = millis();
+
+  // ── Receive from RPi (commands + system events) ───────────────────────────
+  while (Serial2.available()) {
+    char c = (char)Serial2.read();
+    Serial.write(c);  // DEBUG: echo to USB so we can monitor incoming traffic
+    if (c == '\n') {
+      handleSerialLine(cmdBuffer);
+      cmdBuffer = "";
+    } else if (c != '\r') {
+      cmdBuffer += c;
+    }
+  }
 
   // ── Death state ────────────────────────────────────────────────────────────
   // Motors stop; only the START button is polled until the player respawns.
@@ -340,7 +458,7 @@ void loop() {
   String uid = readRfidUid(now);
   if (uid.length() > 0) {
     Serial.print(F("[RFID] UID: ")); Serial.println(uid);
-    // TODO: apply local effect here, or wire RPi + Serial2 for server lookup
+    sendRfidEvent(uid);
   }
 
   // ── Read controller ────────────────────────────────────────────────────────
@@ -359,6 +477,7 @@ void loop() {
       fireIR();
       ammo--;
       lastFireTime = now;
+      sendFireEvent();
       Serial.print(F("[FIRE] ammoLevel=")); Serial.print(ammoLevel);
       Serial.print(F(" | Ammo left: "));    Serial.println(ammo);
     } else if (ammo == 0) {
@@ -367,6 +486,15 @@ void loop() {
   }
   squarePrevious = squareNow;
 
-  // ── Periodic status ────────────────────────────────────────────────────────
-  printStatus(now);
+  // ── Periodic RPi ping ──────────────────────────────────────────────────────
+  if (now - lastPing >= PING_INTERVAL_MS) {
+    sendPing();
+    lastPing = now;
+  }
+
+  // ── Periodic telemetry ─────────────────────────────────────────────────────
+  if (now - lastTelemetry >= TELEMETRY_INTERVAL_MS) {
+    sendTelemetry();
+    lastTelemetry = now;
+  }
 }
