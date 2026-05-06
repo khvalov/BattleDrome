@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <Wire.h>
+#include <SoftwareSerial.h>
 #include <SPI.h>
 #include <MFRC522.h>
 #include <MeMegaPi.h>   // includes MeRGBLed — not used on Trinity
