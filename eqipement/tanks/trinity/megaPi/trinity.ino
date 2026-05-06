@@ -48,7 +48,7 @@ unsigned long lastRxSwitch = 0;
 // RST = 30 (same as wheely).  SS = 6 (digital pin 6 — absent from MeMegaPi
 // port table, so it doesn't conflict with motor or sensor ports).
 const uint8_t RST_PIN = 30;
-const uint8_t SS_PIN  = 6;
+const uint8_t SS_PIN  = A6;
 MFRC522 rfid(SS_PIN, RST_PIN);   // SPI: MOSI=51, MISO=50, SCK=52
 
 const unsigned long RFID_COOLDOWN_MS = 5000;
