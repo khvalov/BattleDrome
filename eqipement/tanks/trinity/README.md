@@ -20,9 +20,9 @@ Trinity is a two-wheel differential-drive platform based on the **MegaPi** (ATme
 | Qty | Component | Description |
 |:---|:---|:---|
 | 1 | **MegaPi** | Main microcontroller (Arduino Mega 2560 compatible) |
-| 1 | **DC Motor Driver** | Dual-channel driver for both motors |
+| 1 | **MegaPi PWM Motor Driver** | Built-in dual-channel PWM driver on PORT_1 and PORT_4 (`MeMegaPiDCMotor`) |
 | 1 | **Bluetooth Module** | Wireless remote control (PS2 protocol) |
-| 2 | **DC Motors** | Drive motors (left on PORT_1, right on PORT_4) |
+| 2 | **Brushed DC Motors** | PWM-controlled via MegaPi (left on PORT_1, right on PORT_4); no encoder feedback |
 | 1 | **Raspberry Pi Zero** | Network bridge to MQTT |
 | 1 | **MFRC522 RFID reader** | SPI RFID card reader (RST=pin 30, SS=A6) |
 | 1 | **IR LED** | Firing transmitter (A12 = pin 66) |
@@ -72,14 +72,16 @@ UART uses **`Serial2`** on the ATmega2560 at **115200 baud** — this is the har
 
 ### Motor port mapping
 
-| Port | Side | Direction constant |
-|:---|:---|:---|
-| PORT_1 | Left | `SIGN_L = +1` |
-| PORT_4 | Right | `SIGN_R = −1` |
+Motors are driven by the MegaPi's built-in PWM H-bridge channels via `MeMegaPiDCMotor`. Speed is set by writing a signed PWM value (−255 to +255) directly to each port — no encoder feedback, open-loop only.
+
+| Port | Side | Direction constant | PWM range |
+|:---|:---|:---|:---|
+| PORT_1 | Left | `SIGN_L = +1` | −255 … +255 |
+| PORT_4 | Right | `SIGN_R = −1` | −255 … +255 |
 
 Flip `SIGN_L` or `SIGN_R` to `+1`/`-1` in the firmware if a motor runs the wrong direction.
 
-Deadzone: **20 units**
+Deadzone: **20 units** (joystick values below this threshold are treated as zero)
 
 ### Speed limits
 
