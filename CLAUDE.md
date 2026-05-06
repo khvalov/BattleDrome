@@ -35,15 +35,40 @@ PS2 Bluetooth remote → MegaPi (ATmega2560) ←UART→ Raspberry Pi Zero ←MQT
 
 ## Firmware Development
 
-- Open `eqipement/tanks/wheely/megaPI/wheely.ino` in Arduino IDE or PlatformIO
-- Required libraries: `MeMegaPi`, `MePS2` (Makeblock), **`ArduinoJson`** by Benoit Blanchon, **`MFRC522`** by Miguel Balboa, `SPI` (built-in) — all via Library Manager
+Two tank firmwares live in this repo — both share the same game-state schema and Serial2 protocol.
+
+| Tank | File | Drive | IR TX | IR RX | RFID SS |
+|---|---|---|---|---|---|
+| Wheely | `eqipement/tanks/wheely/megaPI/wheely.ino` | 4-wheel Mecanum | A12 | A11, A10 | A6 |
+| Trinity | `eqipement/tanks/trinity/megaPi/trinity.ino` | 2-wheel differential | A12 | A11, A10 | A6 |
+
+- Required libraries (both): `MeMegaPi`, `MePS2` (Makeblock), **`ArduinoJson`** by Benoit Blanchon, **`MFRC522`** by Miguel Balboa, **`IRremote`** by shirriff/z3t0/ArminJo, `SPI`, `Wire` (built-in) — all via Library Manager
 - Upload target: MegaPi board (ATmega2560)
 - `Serial` (115200) = USB debug; `Serial2` (115200) = Raspberry Pi UART via flex cable
-- Motor port mapping: FL=PORT_12, FR=PORT_4, RL=PORT_9, RR=PORT_1
 - Tank identity set via `TANK_ID` (≤6 chars) and `TANK_TYPE` constants at top of file
-- IR transmit pin: `IR_TX_PIN` constant (default 3) — replace `fireIR()` body with your IR library call
-- Square button fires: checks `ammo > 0` and `fireSpeed` ms cooldown; decrements ammo, sends `fire` event
-- RFID reader on RST_PIN=30, SS_PIN=22 via SPI (MFRC522 library); sends `rfid` event with UID on card scan; 3 s debounce per UID
+- Square button fires: checks `ammo > 0` and `fireSpeed` ms cooldown; decrements ammo, sends `fire` event via Serial2
+- RFID reader on RST_PIN=30, SS_PIN=A6 via SPI (MFRC522 library); sends `rfid` event with UID on card scan; 5 s debounce per UID
+
+**IR combat system (NEC protocol):**
+
+- **TX pin A12** (= ATmega2560 pin 66): software 38 kHz carrier via busy-wait (`markIR` / `spaceIR`)
+- **RX pins A11 + A10** (= pins 65/64): dual receivers, time-multiplexed every 50 ms via `IrReceiver.begin()` — gives both sensors coverage without running two IRremote instances
+- **Frame format (32-bit NEC):** `addr | (~addr)<<8 | cmd<<16 | (~cmd)<<24`
+  - `addr` = XOR-fold of all TANK_ID bytes — uniquely identifies the shooter
+  - `cmd`  = `ammoLevel` (1–10) — damage points applied by the receiver
+  - Both checksum bytes (`~addr`, `~cmd`) are validated; corrupt/noise frames are silently dropped
+- `IrReceiver.stop()` is called before TX and `IrReceiver.start()` after, so the timer ISR does not capture the outgoing burst as an incoming signal
+- On hit: health decremented, speed cap recalculated (Trinity only), USB serial logs `[HIT] IRx from 0x<addr> -<dmg> HP`
+- Health = 0 → `isDead = true`; motors stop; pressing START respawns (health/ammo reset to 100)
+
+**Wheely-specific:**
+- Motor port mapping: FL=PORT_12, FR=PORT_4, RL=PORT_9, RR=PORT_1
+- WS2812 health LEDs on A14 (led1) and A13 (led2): yellow = waiting for RPi, green/yellow/red = health level; blinks red on hit, green on heal
+
+**Trinity-specific:**
+- Motor port mapping: L=PORT_1, R=PORT_4
+- Health-based speed scaling: max PWM = 30 % at 0 HP → 100 % at 100 HP (`updateSpeedFromHealth()`)
+- No LEDs (A13/A14 are not used)
 
 **Game-state variables (set via `command` messages):**
 
@@ -81,7 +106,7 @@ mosquitto_pub -h broker.hivemq.com \
   -m '{"timestamp":0,"event":{"type":"command","param":"health","value":80}}'
 ```
 
-Valid `param` values: `health`, `ammo`, `ammoLevel`, `fireSpeed`, `immunable`.
+Valid `param` values: `health`, `ammo`, `ammoLevel`, `fireSpeed`, `immunable`, `maxSpeed`, `minSpeed`.
 
 ## Key Constants
 

@@ -5,6 +5,7 @@
 #include <MFRC522.h>
 #include <MeMegaPi.h>   // includes MeRGBLed — no extra #include needed
 #include <MePS2.h>
+#include <IRremote.h>     // Library Manager: "IRremote" by shirriff / z3t0 / ArminJo
 #include <ArduinoJson.h>  // Library Manager: "ArduinoJson" by Benoit Blanchon
 
 // ── Tank settings ──────────────────────────────────────────────────────────────
@@ -31,9 +32,22 @@ int maxSpeed = 160;  // max PWM — overridable via RFID/command
 int minSpeed = 20;   // minimum PWM when moving — overridable via RFID/command
 const int DEADZONE = 20;
 
-// ── IR blaster ─────────────────────────────────────────────────────────────────
-// NEC protocol: addr = XOR-fold of TANK_ID bytes, command = ammoLevel
+// ── IR transmitter ─────────────────────────────────────────────────────────────
+// NEC protocol software carrier via busy-wait — no IRremote sender needed.
+// addr = XOR-fold of TANK_ID bytes; cmd = ammoLevel (damage for receiver).
+// IrReceiver.stop() / IrReceiver.start() wrap every transmission so the timer
+// ISR does not capture the outgoing burst as an incoming signal.
 const uint8_t IR_PIN = A12;  // = pin 66 on ATmega2560
+
+// ── IR receivers (dual, time-multiplexed) ─────────────────────────────────────
+// A11 = pin 65, A10 = pin 64.  IRremote uses a timer ISR to sample the active
+// pin.  We swap every IR_SWITCH_MS ms so both receivers get coverage.
+// A full NEC frame is ~68 ms; 50 ms gives reliable capture.
+const uint8_t IR_RX_PIN_1 = A11;   // first receiver  (= pin 65)
+const uint8_t IR_RX_PIN_2 = A10;   // second receiver (= pin 64)
+const unsigned long IR_SWITCH_MS = 50;
+uint8_t       activeRxPin  = IR_RX_PIN_1;
+unsigned long lastRxSwitch = 0;
 
 // ── Health LEDs (MeRGBLed / WS2812 2×2, pins A14 and A13) ───────────────────
 // Both LEDs mirror the same colour.
@@ -60,6 +74,17 @@ int  ammo      = 100;
 int  ammoLevel = 3;    // 1–10
 int  fireSpeed = 5;    // 1–10: minimum ms between shots
 bool immunable = false;
+
+// ── Death / respawn ────────────────────────────────────────────────────────────
+bool isDead = false;
+
+void respawn() {
+  health    = 100;
+  ammo      = 100;
+  isDead    = false;
+  updateHealthLed();
+  Serial.println(F("[RESPAWN] Tank back in game!"));
+}
 
 // ── Speed tracking ─────────────────────────────────────────────────────────────
 float speedFL = 0, speedFR = 0, speedRL = 0, speedRR = 0;
@@ -179,7 +204,71 @@ void fireIR() {
   // Derive a stable 8-bit address from TANK_ID (XOR of each ASCII byte).
   uint8_t addr = 0;
   for (uint8_t i = 0; TANK_ID[i]; i++) addr ^= (uint8_t)TANK_ID[i];
+
+  // Stop IRremote's timer ISR so it doesn't capture our own outgoing burst
+  IrReceiver.stop();
   sendNEC(addr, (uint8_t)ammoLevel);
+  IrReceiver.start();   // resume on the currently active pin
+}
+
+// ── IR receivers — dual, time-multiplexed ─────────────────────────────────────
+void switchIRReceiver() {
+  unsigned long now = millis();
+  if (now - lastRxSwitch < IR_SWITCH_MS) return;
+  lastRxSwitch = now;
+
+  activeRxPin = (activeRxPin == IR_RX_PIN_1) ? IR_RX_PIN_2 : IR_RX_PIN_1;
+  IrReceiver.begin(activeRxPin, DISABLE_LED_FEEDBACK);
+}
+
+// Decode incoming NEC frame and apply damage.
+// NEC packet: addr | (~addr)<<8 | cmd<<16 | (~cmd)<<24
+// addr = attacker's XOR-folded TANK_ID  |  cmd = attacker's ammoLevel (damage).
+// Validates both checksum pairs so random IR noise is rejected.
+void handleIRReceive() {
+  if (IrReceiver.decode()) {
+    uint32_t raw = IrReceiver.decodedIRData.decodedRawData;
+
+    // Reject repeat codes and zeroed frames
+    if (raw != 0 && raw != 0xFFFFFFFF) {
+      uint8_t addr  =  raw        & 0xFF;
+      uint8_t addrN = (raw >>  8) & 0xFF;
+      uint8_t cmd   = (raw >> 16) & 0xFF;
+      uint8_t cmdN  = (raw >> 24) & 0xFF;
+
+      // Valid NEC: addr XOR ~addr == 0xFF, same for cmd
+      if ((uint8_t)(addr ^ addrN) == 0xFF && (uint8_t)(cmd ^ cmdN) == 0xFF) {
+        int damage = (int)cmd;   // ammoLevel sent by the attacker
+
+        if (damage > 0 && damage <= 10) {
+          if (!immunable) {
+            int prev = health;
+            health = max(0, health - damage);
+
+            uint8_t rxNum = (activeRxPin == IR_RX_PIN_1) ? 1 : 2;
+            Serial.print(F("[HIT] IR")); Serial.print(rxNum);
+            Serial.print(F(" from 0x")); Serial.print(addr, HEX);
+            Serial.print(F(" -")); Serial.print(damage);
+            Serial.print(F(" HP | Health: ")); Serial.println(health);
+
+            startBlink(180, 0, 0);   // red blink on hit
+            updateHealthLed();
+
+            if (health == 0 && prev > 0) {
+              isDead = true;
+              Serial.println(F("[DEAD] Press START to respawn"));
+            }
+          } else {
+            Serial.println(F("[HIT] Immune — no damage taken"));
+          }
+        }
+      }
+    }
+
+    IrReceiver.resume();
+  }
+
+  switchIRReceiver();
 }
 
 // ── RFID ───────────────────────────────────────────────────────────────────────
@@ -360,9 +449,18 @@ void setup() {
   Serial.begin(115200);   // USB debug
   Serial2.begin(115200);  // Raspberry Pi via flex cable UART
 
-  // IR blaster
+  // IR transmitter
   pinMode(IR_PIN, OUTPUT);
   digitalWrite(IR_PIN, LOW);
+
+  // IR receivers — start listening on pin 1
+  IrReceiver.begin(IR_RX_PIN_1, DISABLE_LED_FEEDBACK);
+  activeRxPin = IR_RX_PIN_1;
+  Serial.print(F("IR RX: A11 (pin ")); Serial.print(IR_RX_PIN_1);
+  Serial.print(F(") / A10 (pin "));   Serial.print(IR_RX_PIN_2);
+  Serial.println(F(") — time-multiplexed"));
+  Serial.print(F("IR TX: A12 (pin ")); Serial.print(IR_PIN);
+  Serial.println(F(") — NEC software"));
 
   // Health LEDs — both yellow while waiting for RPi
   led1.setpin(A14); led1.setNumber(4);
@@ -390,6 +488,19 @@ void loop() {
 
   // ── LED blink animation ────────────────────────────────────────────────────
   updateBlink(now);
+
+  // ── IR receive ─────────────────────────────────────────────────────────────
+  handleIRReceive();
+
+  // ── Death state ────────────────────────────────────────────────────────────
+  // Motors stop; only the START button is polled until the player respawns.
+  if (isDead) {
+    portFL.run(0); portFR.run(0);
+    portRL.run(0); portRR.run(0);
+    MePS2.loop();
+    if (MePS2.ButtonPressed(MeJOYSTICK_START)) respawn();
+    return;
+  }
 
   // ── Receive from RPi (commands + system events) ───────────────────────────
   while (Serial2.available()) {

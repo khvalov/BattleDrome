@@ -34,19 +34,18 @@ const int DEADZONE = 20;
 const uint8_t IR_TX_PIN = A12;  // = pin 66 on ATmega2560
 
 // ── IR receivers (dual, time-multiplexed) ─────────────────────────────────────
-// A14 = pin 68, A13 = pin 67.  IRremote uses a timer ISR to sample the active
+// A11 = pin 65, A10 = pin 64.  IRremote uses a timer ISR to sample the active
 // pin.  We swap the active pin every IR_SWITCH_MS milliseconds so both
 // receivers get coverage.  A full NEC frame is ~68 ms; a 50 ms window gives
 // reliable capture of frames that start within the listening window.
-const uint8_t IR_RX_PIN_1 = A14;   // first receiver
-const uint8_t IR_RX_PIN_2 = A13;   // second receiver
+const uint8_t IR_RX_PIN_1 = A11;   // first receiver  (= pin 65)
+const uint8_t IR_RX_PIN_2 = A10;   // second receiver (= pin 64)
 const unsigned long IR_SWITCH_MS = 50;
 uint8_t       activeRxPin  = IR_RX_PIN_1;
 unsigned long lastRxSwitch = 0;
 
 // ── RFID reader ────────────────────────────────────────────────────────────────
-// RST = 30 (same as wheely).  SS = 6 (digital pin 6 — absent from MeMegaPi
-// port table, so it doesn't conflict with motor or sensor ports).
+// RST = 30.  SS = A6 (= pin 60 on ATmega2560 — absent from MeMegaPi port table).
 const uint8_t RST_PIN = 30;
 const uint8_t SS_PIN  = A6;
 MFRC522 rfid(SS_PIN, RST_PIN);   // SPI: MOSI=51, MISO=50, SCK=52
@@ -231,6 +230,7 @@ void handleIRReceive() {
 
             uint8_t rxNum = (activeRxPin == IR_RX_PIN_1) ? 1 : 2;
             Serial.print(F("[HIT] IR")); Serial.print(rxNum);
+            Serial.print(F(" from 0x")); Serial.print(addr, HEX);
             Serial.print(F(" -")); Serial.print(damage);
             Serial.print(F(" HP | Health: ")); Serial.println(health);
 
@@ -395,8 +395,8 @@ void setup() {
   // IR receivers — start listening on pin 1
   IrReceiver.begin(IR_RX_PIN_1, DISABLE_LED_FEEDBACK);
   activeRxPin = IR_RX_PIN_1;
-  Serial.print(F("IR RX: A14 (pin ")); Serial.print(IR_RX_PIN_1);
-  Serial.print(F(") / A13 (pin "));   Serial.print(IR_RX_PIN_2);
+  Serial.print(F("IR RX: A11 (pin ")); Serial.print(IR_RX_PIN_1);
+  Serial.print(F(") / A10 (pin "));   Serial.print(IR_RX_PIN_2);
   Serial.println(F(") — time-multiplexed"));
   Serial.print(F("IR TX: A12 (pin ")); Serial.print(IR_TX_PIN);
   Serial.println(F(") — NEC software"));
