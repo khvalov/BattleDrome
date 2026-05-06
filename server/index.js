@@ -337,6 +337,32 @@ mqttClient.on('message', (topic, raw) => {
     patch.telemetry = { ...prev, ammo: payload.event.data.ammo };
   }
 
+  if (eventType === 'hit' && payload.event.data) {
+    const { shooterAddr, damage, health: reportedHealth } = payload.event.data;
+
+    // Try to identify the shooter by XOR-folding known tank IDs and matching addr
+    let shooterId = null;
+    for (const [id] of Object.entries(tanks)) {
+      const fold = [...id].reduce((acc, c) => acc ^ c.charCodeAt(0), 0);
+      if (fold === shooterAddr) { shooterId = id; break; }
+    }
+
+    const currentHealth = (tanks[tankId] || {}).telemetry?.health ?? 100;
+    const newHealth     = Math.max(0, currentHealth - damage);
+
+    console.log(
+      `[HIT] ${tankId} hit by ${shooterId ? shooterId : `0x${shooterAddr.toString(16)}`}` +
+      ` — damage: ${damage}, health: ${currentHealth} → ${newHealth}`
+    );
+
+    // Update local telemetry cache so subsequent hits compound correctly
+    const prev = (tanks[tankId] || {}).telemetry || {};
+    patch.telemetry = { ...prev, health: newHealth };
+
+    // Send the authoritative health value back to the receiver
+    sendCommand(tankId, 'health', newHealth);
+  }
+
   if (eventType === 'rfid' && payload.event.data) {
     const uid = (payload.event.data.uid || '').toUpperCase();
     console.log(`[RFID] Tank ${tankId} scanned UID: ${uid}`);

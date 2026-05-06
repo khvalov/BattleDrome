@@ -234,6 +234,8 @@ void handleIRReceive() {
             Serial.print(F(" -")); Serial.print(damage);
             Serial.print(F(" HP | Health: ")); Serial.println(health);
 
+            sendHitEvent(addr, damage);   // notify server → server deducts HP
+
             if (health == 0 && prev > 0) {
               isDead = true;
               Serial.println(F("[DEAD] Press START to respawn"));
@@ -311,6 +313,28 @@ void sendTelemetry() {
   data["immunable"] = immunable;
   data["maxSpeed"]  = maxSpeed;
   data["minSpeed"]  = minSpeed;
+
+  serializeJson(doc, Serial2);
+  Serial2.print("\r\n");
+}
+
+// Hit event: sent immediately when an incoming IR frame is decoded and damage is applied.
+// receiverId  = this tank (who got hit)
+// shooterAddr = 8-bit addr from the NEC frame (XOR-fold of attacker's TANK_ID)
+// damage      = cmd byte from the NEC frame (attacker's ammoLevel)
+// health      = remaining health after the hit
+void sendHitEvent(uint8_t shooterAddr, int damage) {
+  StaticJsonDocument<256> doc;
+  doc["timestamp"] = millis() / 1000;
+  JsonObject event = doc.createNestedObject("event");
+  event["type"] = "hit";
+  JsonObject data = event.createNestedObject("data");
+  data["tankId"]      = TANK_ID;
+  data["tankType"]    = TANK_TYPE;
+  data["receiverId"]  = TANK_ID;
+  data["shooterAddr"] = shooterAddr;
+  data["damage"]      = damage;
+  data["health"]      = health;
 
   serializeJson(doc, Serial2);
   Serial2.print("\r\n");
