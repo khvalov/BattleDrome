@@ -1122,8 +1122,8 @@ let _logUnread   = 0;
 // ── Page navigation ───────────────────────────────────────────────────────────
 function showPage(name) {
   _currentPage = name;
-  document.getElementById('page-dashboard').style.display = name === 'dashboard' ? '' : 'none';
-  document.getElementById('page-log').style.display       = name === 'log'       ? '' : 'none';
+  document.getElementById('page-dashboard').style.display = name === 'dashboard' ? 'block' : 'none';
+  document.getElementById('page-log').style.display       = name === 'log'       ? 'block' : 'none';
   for (const tab of document.querySelectorAll('.page-tab')) {
     tab.classList.toggle('active', tab.dataset.page === name);
   }
@@ -1680,62 +1680,102 @@ document.getElementById('btn-fp-apply-immunity').addEventListener('click', () =>
 });
 
 // Render every online tank (plus any configured-but-offline tank) as an inline row.
-// The user types the home-base UID and clicks Set — no dropdown form needed.
+// Uses DOM-diff so existing <input> elements are NEVER replaced — focus and typed
+// values survive the 500 ms telemetry update cycle.
 function renderFpBases(freeBases, freeReady, freeStates) {
   const el = document.getElementById('fp-panel-list');
 
   // Union: online tanks + any already-configured (may be offline)
   const allIds = [...new Set([..._tanks.map(t => t.id), ...Object.keys(freeBases)])];
 
+  // When truly no tanks exist show a placeholder (no rows to diff)
   if (!allIds.length) {
-    el.innerHTML = '<div class="fp-tank-row" style="justify-content:center;color:#484f58;font-style:italic">No tanks online yet — power on the tanks to see them here.</div>';
+    // Only replace innerHTML if not already showing the placeholder
+    if (!el.querySelector('.fp-empty-msg')) {
+      el.innerHTML = '<div class="fp-tank-row fp-empty-msg" style="justify-content:center;color:#484f58;font-style:italic">No tanks online yet — power on the tanks to see them here.</div>';
+    }
     return;
   }
+  // Remove placeholder if tanks appeared
+  const placeholder = el.querySelector('.fp-empty-msg');
+  if (placeholder) placeholder.remove();
 
-  el.innerHTML = allIds.map(id => {
-    const online  = _tanks.some(t => t.id === id);
-    const uid     = freeBases[id] || '';
-    const inGame  = id in freeBases;
-    const ready   = freeReady[id];
-    const state   = freeStates[id];
+  // Remove rows for tanks that are no longer in the list
+  for (const row of [...el.querySelectorAll('.fp-tank-row[data-fp-id]')]) {
+    if (!allIds.includes(row.dataset.fpId)) row.remove();
+  }
 
-    const offlineTag = !online
-      ? ' <span class="fp-offline-tag">(offline)</span>' : '';
+  for (const id of allIds) {
+    const online = _tanks.some(t => t.id === id);
+    const uid    = freeBases[id] || '';
+    const inGame = id in freeBases;
+    const ready  = freeReady[id];
+    const state  = freeStates[id];
+    const canSet = online || inGame;
 
-    const readyBadge = inGame
+    let row = el.querySelector(`.fp-tank-row[data-fp-id="${CSS.escape(id)}"]`);
+
+    if (!row) {
+      // ── First time: create the full row ──────────────────────────────────
+      row = document.createElement('div');
+      row.className    = 'fp-tank-row';
+      row.dataset.fpId = id;
+      // Input is created once and never replaced — value updates are handled below
+      row.innerHTML = `
+        <span class="fp-tank-name"></span>
+        <input class="uid-input fp-uid-input" type="text"
+               placeholder="e.g. A1B2C3D4"
+               title="Home base RFID UID"
+               onkeydown="if(event.key==='Enter') fpSetBase('${esc(id)}')" />
+        <button class="btn btn-primary fp-set-btn"
+                onclick="fpSetBase('${esc(id)}')">&#10003; Set Base</button>
+        <span class="fp-ready-slot"></span>
+        <span class="fp-state-slot"></span>
+        <span class="fp-remove-slot"></span>`;
+      el.appendChild(row);
+    }
+
+    // ── Update dynamic parts in-place (input is intentionally excluded) ────
+
+    // Tank name + offline tag
+    row.querySelector('.fp-tank-name').innerHTML =
+      esc(tankName(id)) + (!online ? ' <span class="fp-offline-tag">(offline)</span>' : '');
+
+    // Input: disabled state only — value is only written if input is NOT focused
+    // AND either: the server has a confirmed UID and the field is blank,
+    // or the server UID matches what was just auto-filled.
+    const inp = row.querySelector('input');
+    inp.disabled = !canSet;
+    if (document.activeElement !== inp) {
+      // Sync server-confirmed UID → input (e.g. another client set the base)
+      if (uid && inp.value.toUpperCase() !== uid) inp.value = uid;
+      // If server has no UID yet, leave whatever the user typed untouched
+    }
+
+    // Set Base button
+    row.querySelector('.fp-set-btn').disabled = !canSet;
+
+    // Ready badge
+    row.querySelector('.fp-ready-slot').innerHTML = inGame
       ? (ready
           ? '<span class="fp-ready-badge ready">&#10003;&nbsp;On Base</span>'
           : '<span class="fp-ready-badge waiting">&#8987;&nbsp;Waiting</span>')
       : '<span style="font-size:0.65rem;color:#484f58;font-style:italic">not in game</span>';
 
-    const stateBadge = state
+    // State badge
+    row.querySelector('.fp-state-slot').innerHTML = state
       ? `<span class="fp-state-badge fp-state-${esc(state)}">${esc(state)}</span>` : '';
 
-    const removeBtn = inGame
+    // Remove button
+    row.querySelector('.fp-remove-slot').innerHTML = inGame
       ? `<button class="btn btn-danger" onclick="deleteFpBase('${esc(id)}')" title="Remove from game">&#10005; Remove</button>`
       : '';
-
-    const canSet = online || inGame;
-
-    return `<div class="fp-tank-row">
-      <span class="fp-tank-name">${esc(tankName(id))}${offlineTag}</span>
-      <input id="fp-uid-${esc(id)}" class="uid-input fp-uid-input" type="text"
-             placeholder="e.g. A1B2C3D4"
-             value="${esc(uid)}"
-             title="Home base RFID UID"
-             ${!canSet ? 'disabled' : ''}
-             onkeydown="if(event.key==='Enter') fpSetBase('${esc(id)}')" />
-      <button class="btn btn-primary" onclick="fpSetBase('${esc(id)}')"
-              ${!canSet ? 'disabled' : ''}>&#10003; Set Base</button>
-      ${readyBadge}
-      ${stateBadge}
-      ${removeBtn}
-    </div>`;
-  }).join('');
+  }
 }
 
 async function fpSetBase(tankId) {
-  const inp = document.getElementById(`fp-uid-${tankId}`);
+  const row = document.querySelector(`.fp-tank-row[data-fp-id="${CSS.escape(tankId)}"]`);
+  const inp = row?.querySelector('input');
   if (!inp) return;
   const uid = inp.value.trim().toUpperCase();
   if (!uid) { inp.focus(); return; }
@@ -1984,17 +2024,25 @@ function appendLog({ tankId, receivedAt, payload }) {
   const ts   = new Date(receivedAt).toISOString().replace('T', ' ').slice(0, -1) + 'Z';
 
   // ── Auto-fill Free Play home-base RFID input ──────────────────────────────
-  // When a tank powers up on its RFID tag it immediately sends an rfid event.
-  // Pre-populate the UID field so the operator just clicks "Set Base".
+  // When a tank scans its RFID tag the server broadcasts update then log.
+  // The update will have re-rendered the row already, so the input exists.
+  // We fill it here; the DOM-diff renderFpBases will preserve the value on
+  // subsequent telemetry ticks because it only syncs when server uid is set.
   if (type === 'rfid') {
     const scannedUid = payload?.event?.data?.uid;
+    // Try the data-embedded tankId first (firmware's own ID), then the wrapper id
+    const dataId   = payload?.event?.data?.tankId;
+    const tryIds   = [...new Set([dataId, tankId].filter(Boolean))];
     if (scannedUid) {
-      const inp = document.getElementById(`fp-uid-${tankId}`);
-      // Only fill if field is empty — never overwrite user input
-      if (inp && !inp.value.trim()) {
-        inp.value = scannedUid.toUpperCase();
-        inp.style.borderColor = '#3fb950';  // brief green flash
-        setTimeout(() => inp.style.borderColor = '', 1500);
+      for (const cid of tryIds) {
+        const row = document.querySelector(`.fp-tank-row[data-fp-id="${CSS.escape(cid)}"]`);
+        const inp = row?.querySelector('input');
+        if (inp && !inp.value.trim()) {
+          inp.value = scannedUid.toUpperCase();
+          inp.style.borderColor = '#3fb950';
+          setTimeout(() => inp.style.borderColor = '', 1500);
+          break;
+        }
       }
     }
   }
