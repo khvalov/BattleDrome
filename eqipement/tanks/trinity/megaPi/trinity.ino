@@ -216,10 +216,6 @@ void handleIRReceive() {
   if (IrReceiver.decode()) {
     uint32_t raw  = IrReceiver.decodedIRData.decodedRawData;
 
-    // DEBUG — remove once hits are confirmed working
-    Serial.print(F("[IR RAW] 0x")); Serial.print(raw, HEX);
-    Serial.print(F(" proto=")); Serial.println((int)IrReceiver.decodedIRData.protocol);
-
     // Reject repeat codes and zeroed frames
     if (raw != 0 && raw != 0xFFFFFFFF) {
       uint8_t addr  =  raw        & 0xFF;
