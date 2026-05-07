@@ -1254,7 +1254,8 @@ function selectMode(mode, sendToServer = false) {
     tab.classList.toggle('active', tab.dataset.mode === mode);
   }
   for (const p of document.querySelectorAll('.mode-config-panel')) p.style.display = 'none';
-  const panel = document.getElementById(`panel-${mode}`);
+  // Panel IDs use hyphens (panel-free-play) but mode values use underscores (free_play)
+  const panel = document.getElementById(`panel-${mode.replace(/_/g, '-')}`);
   if (panel) panel.style.display = '';
   document.getElementById('mode-description').textContent = MODE_DESCRIPTIONS[mode] || '';
 
