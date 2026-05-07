@@ -5,9 +5,11 @@
 #include <MFRC522.h>
 #include <MeMegaPi.h>   // includes MeRGBLed — no extra #include needed
 #include <MePS2.h>
-// Force IRremote onto Timer5 — Timer2 is used by MeMegaPi motor PWM (TCCR2A/2B
-// in setup()) and would otherwise clobber IRremote's timer ISR after begin().
-#define IR_USE_AVR_TIMER5
+// Force IRremote onto Timer4 (16-bit, pins 6/7/8).
+// Timer1 & Timer2 are claimed by MeMegaPi motor PWM (TCCR1/TCCR2 in setup()).
+// Timer5 is claimed by the Servo library bundled with MeMegaPi → __vector_47 clash.
+// Timer4 is free on MegaPi with this motor port configuration.
+#define IR_USE_AVR_TIMER4
 #include <IRremote.h>     // Library Manager: "IRremote" by shirriff / z3t0 / ArminJo
 #include <ArduinoJson.h>  // Library Manager: "ArduinoJson" by Benoit Blanchon
 
