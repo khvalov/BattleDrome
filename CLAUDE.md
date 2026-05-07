@@ -30,6 +30,7 @@ PS2 Bluetooth remote → MegaPi (ATmega2560) ←UART→ Raspberry Pi Zero ←MQT
 | `error` | tank→server | Failure report |
 | `telemetry` | tank→server | Tank stats snapshot every 500 ms (speed, health, ammo, …) |
 | `fire` | tank→server | Immediate shot event (senderId, ammoLevel, remaining ammo) |
+| `hit` | tank→server | IR hit received (receiverId, shooterAddr, damage, health after hit) |
 | `rfid` | tank→server | RFID tag scanned (uid); server looks up action and replies with `command` |
 | `command` | server→tank | Update a game-state variable on the Arduino |
 
@@ -42,7 +43,7 @@ Two tank firmwares live in this repo — both share the same game-state schema a
 | Wheely | `eqipement/tanks/wheely/megaPI/wheely.ino` | 4-wheel Mecanum | A12 | A11, A10 | A6 |
 | Trinity | `eqipement/tanks/trinity/megaPi/trinity.ino` | 2-wheel differential | A12 | A11, A10 | A6 |
 
-- Required libraries (both): `MeMegaPi`, `MePS2` (Makeblock), **`ArduinoJson`** by Benoit Blanchon, **`MFRC522`** by Miguel Balboa, **`IRremote`** by shirriff/z3t0/ArminJo, `SPI`, `Wire` (built-in) — all via Library Manager
+- Required libraries (both): `MeMegaPi`, `MePS2` (Makeblock), **`ArduinoJson`** by Benoit Blanchon, **`MFRC522`** by Miguel Balboa, **`IRremote`** by shirriff/z3t0/ArminJo, `SPI`, `Wire`, `SoftwareSerial` (built-in) — all via Library Manager
 - Upload target: MegaPi board (ATmega2560)
 - `Serial` (115200) = USB debug; `Serial2` (115200) = Raspberry Pi UART via flex cable
 - Tank identity set via `TANK_ID` (≤6 chars) and `TANK_TYPE` constants at top of file
@@ -52,13 +53,18 @@ Two tank firmwares live in this repo — both share the same game-state schema a
 **IR combat system (NEC protocol):**
 
 - **TX pin A12** (= ATmega2560 pin 66): software 38 kHz carrier via busy-wait (`markIR` / `spaceIR`)
-- **RX pins A11 + A10** (= pins 65/64): dual receivers, time-multiplexed every 50 ms via `IrReceiver.begin()` — gives both sensors coverage without running two IRremote instances
+- **RX pins A11 + A10** (= pins 65/64): dual receivers, time-multiplexed every **200 ms** via `IrReceiver.begin()` — gives both sensors coverage without running two IRremote instances. Must be > 68 ms (full NEC frame length); calling `IrReceiver.begin()` mid-frame resets the decoder.
+- **IRremote timer: `#define IR_USE_AVR_TIMER3`** must appear before `#include <IRremote.h>`. ATmega2560 timer allocation on MegaPi:
+  - Timer0 — Arduino core (`millis`/`micros`) — reserved
+  - Timer1, Timer2 — MeMegaPi motor PWM (`TCCR1`/`TCCR2` in `setup()`) — claimed
+  - Timer3 — **IRremote** ✓ free
+  - Timer4, Timer5 — Servo library (bundled with MeMegaPi) — claimed
 - **Frame format (32-bit NEC):** `addr | (~addr)<<8 | cmd<<16 | (~cmd)<<24`
   - `addr` = XOR-fold of all TANK_ID bytes — uniquely identifies the shooter
   - `cmd`  = `ammoLevel` (1–10) — damage points applied by the receiver
   - Both checksum bytes (`~addr`, `~cmd`) are validated; corrupt/noise frames are silently dropped
 - `IrReceiver.stop()` is called before TX and `IrReceiver.start()` after, so the timer ISR does not capture the outgoing burst as an incoming signal
-- On hit: health decremented, speed cap recalculated (Trinity only), USB serial logs `[HIT] IRx from 0x<addr> -<dmg> HP`
+- On hit: firmware decrements health locally, sends `hit` event via Serial2 → RPi → MQTT; server computes authoritative new health and sends `command health <N>` back
 - Health = 0 → `isDead = true`; motors stop; pressing START respawns (health/ammo reset to 100)
 
 **Wheely-specific:**
@@ -72,13 +78,15 @@ Two tank firmwares live in this repo — both share the same game-state schema a
 
 **Game-state variables (set via `command` messages):**
 
-| Variable | Default | Range |
-|---|---|---|
-| `health` | 100 | 0–100 |
-| `ammo` | 100 | 0–100 |
-| `ammoLevel` | 3 | 1–10 |
-| `fireSpeed` | 5 | 1–10 |
-| `immunable` | false | bool |
+| Variable | Wheely default | Trinity default | Range |
+|---|---|---|---|
+| `health` | 100 | 100 | 0–100 |
+| `ammo` | 100 | 100 | 0–100 |
+| `ammoLevel` | 1 | 3 | 1–10 |
+| `fireSpeed` | 1 | 6 | 1–10 |
+| `immunable` | false | false | bool |
+| `maxSpeed` | 160 | 160 | 1–255 |
+| `minSpeed` | 20 | 20 | 0–255 |
 
 ## Raspberry Pi Setup
 

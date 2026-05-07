@@ -64,7 +64,8 @@ UART uses **`Serial2`** on the ATmega2560 at **115200 baud** — this is the har
 - `MePS2` — PS2 Bluetooth controller
 - `ArduinoJson` by Benoit Blanchon
 - `MFRC522` by Miguel Balboa — RFID reader
-- `SPI` — built-in Arduino SPI library (required by MFRC522)
+- `IRremote` by shirriff / z3t0 / ArminJo — IR receive decoding
+- `SPI`, `Wire`, `SoftwareSerial` — built-in Arduino libraries
 
 ### Controls
 
@@ -99,7 +100,7 @@ Both limits are runtime-mutable via `command` messages or RFID actions.
 | Constant | Value | Description |
 |:---|:---|:---|
 | `RST_PIN` | `30` | MFRC522 reset pin |
-| `SS_PIN` | `7` | MFRC522 SPI slave-select pin |
+| `SS_PIN` | `A6` | MFRC522 SPI slave-select pin (= pin 60 on ATmega2560) |
 | `RFID_COOLDOWN_MS` | `5000` | Min ms before the same UID triggers again |
 
 Uses hardware SPI (MOSI=51, MISO=50, SCK=52 on ATmega2560). When a card is detected the firmware reads the UID, applies the 5 s debounce, and sends an `rfid` event over `Serial2`:
@@ -118,7 +119,9 @@ Defined as constants at the top of `wheely.ino`:
 |:---|:---|:---|
 | `TANK_ID` | `"WHLYA1"` | Unique identifier, up to 6 characters |
 | `TANK_TYPE` | `"wheely"` | Tank model name |
-| `IR_PIN` | `A12` | IR LED data pin (= pin 66 on ATmega2560) |
+| `IR_PIN` | `A12` | IR LED transmit pin (= pin 66 on ATmega2560) |
+| `IR_RX_PIN_1` | `A11` | First IR receiver (= pin 65) |
+| `IR_RX_PIN_2` | `A10` | Second IR receiver (= pin 64) |
 
 ### Firing (Square button)
 
@@ -127,13 +130,55 @@ Pressing the **Square** button triggers a shot if:
 - Time since last shot ≥ `fireSpeed` ms
 
 On each shot the firmware:
-1. Transmits a **NEC IR frame** on `IR_PIN` (38 kHz software carrier)
+1. Pauses the IR receiver ISR (`IrReceiver.stop()`)
+2. Transmits a **NEC IR frame** on `IR_PIN` (38 kHz software carrier)
    - Address byte: XOR-fold of `TANK_ID` ASCII bytes (identifies the shooter)
    - Command byte: current `ammoLevel` (damage level)
-2. Decrements `ammo` by 1
-3. Immediately sends a `fire` event over `Serial2`
+3. Resumes the IR receiver ISR (`IrReceiver.start()`)
+4. Decrements `ammo` by 1
+5. Immediately sends a `fire` event over `Serial2`
 
 > **Note:** Button detection uses `MePS2.ButtonPressed(MeJOYSTICK_SQUARE)`. Rising-edge logic (one shot per press) is handled in firmware with `squarePrevious`.
+
+### Receiving hits (dual IR receivers)
+
+Two IR receivers cover both sides of the tank. Because `IRremote` can only sample one pin at a time they are **time-multiplexed**: the active receiver switches every **200 ms** via `IrReceiver.begin(newPin)`. The interval must exceed the NEC frame length (~68 ms); calling `begin()` mid-frame resets the decoder.
+
+`IRremote` is forced onto **Timer3** (`#define IR_USE_AVR_TIMER3` before the include). Timer1/2 are used by MeMegaPi motor PWM; Timer4/5 are used by the Servo library bundled with MeMegaPi.
+
+On each decoded NEC frame:
+1. Both NEC checksum pairs (`addr ^ ~addr`, `cmd ^ ~cmd`) are validated — noise is discarded
+2. `addr` identifies the shooter (XOR-fold of their `TANK_ID`)
+3. `cmd` = damage = attacker's `ammoLevel`
+4. If not immune: `health = max(0, health - damage)`; LEDs blink red
+5. USB serial logs: `[HIT] IR<n> from 0x<addr> -<dmg> HP | Health: <hp>`
+6. A **`hit` event** is sent over `Serial2` → RPi → MQTT → server
+7. Server subtracts the damage from cached health and sends `command health <new>` back
+
+```json
+{
+  "timestamp": 1234,
+  "event": {
+    "type": "hit",
+    "data": {
+      "tankId": "WHLYA1", "tankType": "wheely",
+      "receiverId": "WHLYA1",
+      "shooterAddr": 84,
+      "damage": 1,
+      "health": 99
+    }
+  }
+}
+```
+
+`shooterAddr` is the 8-bit NEC address byte (XOR-fold of the attacker's `TANK_ID`). The server resolves this to a tank name by folding all known tank IDs.
+
+### Death and respawn
+
+When `health` reaches 0:
+- `isDead = true` — motors stop, all inputs ignored
+- USB serial prints: `[DEAD] Press START to respawn`
+- Pressing **START** on the PS2 controller calls `respawn()`: health and ammo reset to 100
 
 ### Health LED matrices
 
@@ -161,11 +206,11 @@ Both matrices always show the same colour.
 | 5 – 50 | 🟡 Yellow |
 | < 5 (critical / dead) | 🔴 Red |
 
-**Hit / heal blink:**  
-When health is updated by a `command`:
-- **Decreased** → both matrices blink **red** twice (non-blocking, 100 ms per flash)
-- **Increased** → both matrices blink **green** twice
-- After blinking, the correct health colour is restored automatically
+**Hit / heal blink:**
+- **IR hit received** → both matrices blink **red** twice immediately
+- **Health `command` decreased** → both matrices blink **red** twice
+- **Health `command` increased** → both matrices blink **green** twice
+- Non-blocking, 100 ms per flash; correct health colour restored automatically after
 
 ### Telemetry
 
@@ -212,8 +257,8 @@ Held in memory on the Arduino. Updated at runtime via `command` messages receive
 |:---|:---|:---|:---|
 | `health` | 100 | 0–100 | Tank HP |
 | `ammo` | 100 | 0–100 | Remaining ammunition |
-| `ammoLevel` | 3 | 1–10 | Ammo power / damage multiplier |
-| `fireSpeed` | 5 | 1–10 | Minimum ms between shots |
+| `ammoLevel` | 1 | 1–10 | Ammo power / damage multiplier |
+| `fireSpeed` | 1 | 1–10 | Minimum ms between shots |
 | `immunable` | false | bool | Immune to damage |
 | `maxSpeed` | 160 | 1–255 | Motor PWM cap |
 | `minSpeed` | 20 | 0–255 | Motor PWM floor when moving |
