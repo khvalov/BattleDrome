@@ -5,6 +5,9 @@
 #include <MFRC522.h>
 #include <MeMegaPi.h>   // includes MeRGBLed — no extra #include needed
 #include <MePS2.h>
+// Force IRremote onto Timer5 — Timer2 is used by MeMegaPi motor PWM (TCCR2A/2B
+// in setup()) and would otherwise clobber IRremote's timer ISR after begin().
+#define IR_USE_AVR_TIMER5
 #include <IRremote.h>     // Library Manager: "IRremote" by shirriff / z3t0 / ArminJo
 #include <ArduinoJson.h>  // Library Manager: "ArduinoJson" by Benoit Blanchon
 
