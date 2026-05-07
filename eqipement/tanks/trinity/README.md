@@ -2,6 +2,8 @@
 
 A differential-drive combat robot powered by MegaPi and Raspberry Pi.
 
+<img width="1457" height="1080" alt="ChatGPT Image May 7, 2026, 10_14_34 AM" src="https://github.com/user-attachments/assets/a631860f-29b6-40e5-8e4d-54ea1f697cde" />
+
 ---
 
 ## Core Architecture
