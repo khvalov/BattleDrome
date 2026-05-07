@@ -521,9 +521,21 @@
     .fp-wl { display:flex; gap:0.35rem; align-items:center; flex-shrink: 0; }
     .fp-wins   { font-weight:bold; color:#3fb950; font-size:0.78rem; }
     .fp-losses { font-weight:bold; color:#f85149; font-size:0.78rem; }
-    .fp-tank-name { min-width: 80px; font-size:0.78rem; }
-    .fp-offline-tag { font-size:0.62rem; color:#484f58; }
-    .fp-uid-input { text-transform:uppercase; font-family:monospace; width:130px; }
+    .fp-tank-name { min-width: 90px; font-size:0.82rem; font-weight:bold; color:#e6edf3; }
+    .fp-offline-tag { font-size:0.62rem; color:#484f58; font-weight:normal; }
+    .fp-uid-input { text-transform:uppercase; font-family:monospace; width:150px; }
+    .fp-tank-row {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      padding: 0.7rem 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.5rem;
+    }
+    .fp-tank-row:hover { border-color: #484f58; }
 
     /* ─ Right: scoreboard + timer ─ */
     #game-sidebar {
@@ -1230,6 +1242,10 @@ for (const tab of document.querySelectorAll('.mode-tab')) {
   tab.addEventListener('click', () => {
     if (_gameState?.status === 'running') return;
     selectMode(tab.dataset.mode, true);
+    // Re-render Free Play panel immediately so it uses the current _tanks list
+    if (tab.dataset.mode === 'free_play' && _gameState) {
+      renderFpBases(_gameState.freeBases || {}, _gameState.freeReady || {}, _gameState.freeStates || {});
+    }
   });
 }
 
@@ -1569,12 +1585,16 @@ function refreshTankDropdowns() {
     : _tanks.map(t => `<option value="${esc(t.id)}">${esc(tankName(t.id))}</option>`).join('');
   if (prev && _tanks.some(t => t.id === prev)) sel.value = prev;
 
-  // Free Play panel re-renders itself from _tanks — no dropdown to update
-  if (_gameState) {
-    renderFpBases(_gameState.freeBases || {}, _gameState.freeReady || {}, _gameState.freeStates || {});
-    // re-render teams to refresh their "Add Tank" dropdowns
-    renderTeams(_gameState.teams || {});
-  }
+  // Free Play panel: always re-render so online-tank rows appear as soon as tanks come online.
+  // If _gameState is not yet set (very first update before game_update arrives), render with
+  // empty config — the tank rows will still appear so users can type UIDs immediately.
+  const fpBases  = _gameState?.freeBases  || {};
+  const fpReady  = _gameState?.freeReady  || {};
+  const fpStates = _gameState?.freeStates || {};
+  renderFpBases(fpBases, fpReady, fpStates);
+
+  // re-render teams to refresh their "Add Tank" dropdowns
+  if (_gameState) renderTeams(_gameState.teams || {});
 }
 
 // ── Free Play ─────────────────────────────────────────────────────────────────
@@ -1592,7 +1612,7 @@ function renderFpBases(freeBases, freeReady, freeStates) {
   const allIds = [...new Set([..._tanks.map(t => t.id), ...Object.keys(freeBases)])];
 
   if (!allIds.length) {
-    el.innerHTML = '<div class="empty-list">No tanks online yet. Power on the tanks to see them here.</div>';
+    el.innerHTML = '<div class="fp-tank-row" style="justify-content:center;color:#484f58;font-style:italic">No tanks online yet — power on the tanks to see them here.</div>';
     return;
   }
 
@@ -1603,32 +1623,34 @@ function renderFpBases(freeBases, freeReady, freeStates) {
     const ready   = freeReady[id];
     const state   = freeStates[id];
 
-    const offlineTag = !online ? '<span class="fp-offline-tag">&nbsp;offline</span>' : '';
+    const offlineTag = !online
+      ? ' <span class="fp-offline-tag">(offline)</span>' : '';
 
     const readyBadge = inGame
       ? (ready
           ? '<span class="fp-ready-badge ready">&#10003;&nbsp;On Base</span>'
           : '<span class="fp-ready-badge waiting">&#8987;&nbsp;Waiting</span>')
-      : '';
+      : '<span style="font-size:0.65rem;color:#484f58;font-style:italic">not in game</span>';
 
     const stateBadge = state
       ? `<span class="fp-state-badge fp-state-${esc(state)}">${esc(state)}</span>` : '';
 
     const removeBtn = inGame
-      ? `<button class="btn btn-danger" onclick="deleteFpBase('${esc(id)}')" title="Remove from game">&#10005;</button>`
+      ? `<button class="btn btn-danger" onclick="deleteFpBase('${esc(id)}')" title="Remove from game">&#10005; Remove</button>`
       : '';
 
-    // Disable Set for offline tanks that have no base yet
     const canSet = online || inGame;
 
-    return `<div class="item-row" style="flex-wrap:wrap;gap:0.5rem;align-items:center">
+    return `<div class="fp-tank-row">
       <span class="fp-tank-name">${esc(tankName(id))}${offlineTag}</span>
       <input id="fp-uid-${esc(id)}" class="uid-input fp-uid-input" type="text"
-             placeholder="Home RFID UID" value="${esc(uid)}"
+             placeholder="e.g. A1B2C3D4"
+             value="${esc(uid)}"
+             title="Home base RFID UID"
              ${!canSet ? 'disabled' : ''}
              onkeydown="if(event.key==='Enter') fpSetBase('${esc(id)}')" />
       <button class="btn btn-primary" onclick="fpSetBase('${esc(id)}')"
-              ${!canSet ? 'disabled' : ''}>Set</button>
+              ${!canSet ? 'disabled' : ''}>&#10003; Set Base</button>
       ${readyBadge}
       ${stateBadge}
       ${removeBtn}
