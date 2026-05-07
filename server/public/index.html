@@ -521,6 +521,9 @@
     .fp-wl { display:flex; gap:0.35rem; align-items:center; flex-shrink: 0; }
     .fp-wins   { font-weight:bold; color:#3fb950; font-size:0.78rem; }
     .fp-losses { font-weight:bold; color:#f85149; font-size:0.78rem; }
+    .fp-tank-name { min-width: 80px; font-size:0.78rem; }
+    .fp-offline-tag { font-size:0.62rem; color:#484f58; }
+    .fp-uid-input { text-transform:uppercase; font-family:monospace; width:130px; }
 
     /* ─ Right: scoreboard + timer ─ */
     #game-sidebar {
@@ -754,35 +757,16 @@
       <!-- ── Free Play ── -->
       <div class="mode-config-panel" id="panel-free-play">
 
-        <div class="config-section-label">Home Bases</div>
+        <div class="config-section-label">Tanks &amp; Home Bases</div>
         <p style="font-size:0.72rem;color:#8b949e;margin-bottom:0.75rem">
-          Assign an RFID tag as each tank's home base. Drive each tank onto its base tag — the
-          dashboard shows <strong style="color:#3fb950">On Base</strong> when confirmed.
-          When killed, drive back to your home base to respawn.
+          Every online tank is listed below. Type its home-base RFID UID and click
+          <strong style="color:#58a6ff">Set</strong> to add it to the round.
+          Then drive the tank onto that tag — the badge turns
+          <strong style="color:#3fb950">On Base</strong>.
+          Dead tanks can still drive but cannot shoot; return to the home base to respawn.
         </p>
 
-        <button class="btn btn-primary" id="btn-toggle-fp-base-form" data-label="Assign Base" style="margin-bottom:0.6rem">
-          ＋ Assign Base
-        </button>
-
-        <div class="inline-form" id="fp-base-form">
-          <div class="inline-form-row">
-            <div class="inline-form-field">
-              <label>Tank</label>
-              <select id="fp-base-tank-select" style="min-width:160px"></select>
-            </div>
-            <div class="inline-form-field">
-              <label>Home RFID UID</label>
-              <input id="fp-base-uid" class="uid-input" type="text" placeholder="AABBCCDD" style="min-width:120px" />
-            </div>
-          </div>
-          <div class="inline-form-actions">
-            <button class="btn btn-success" id="btn-fp-assign-base">Assign</button>
-            <button class="btn" id="btn-fp-cancel-base-form">Cancel</button>
-          </div>
-        </div>
-
-        <div id="fp-bases-list" class="items-list" style="margin-bottom:1rem"></div>
+        <div id="fp-panel-list" class="items-list" style="margin-bottom:1rem"></div>
 
         <div class="config-section-label">Respawn Immunity</div>
         <div class="game-settings-row" style="margin-bottom:0">
@@ -1352,7 +1336,8 @@ function applyGameState(g) {
   renderBases(g.bases);
   renderTreasures(g.treasures);
   renderCheckpoints(g.checkpoints, g.takenCheckpoints);
-  renderFpBases(g.freeBases || {}, g.freeReady || {}, g.freeStates || {});
+  if (document.getElementById('fp-panel-list'))
+    renderFpBases(g.freeBases || {}, g.freeReady || {}, g.freeStates || {});
   if (document.activeElement !== document.getElementById('fp-immunity-duration'))
     document.getElementById('fp-immunity-duration').value = g.immunityDuration ?? 5;
 
@@ -1584,66 +1569,79 @@ function refreshTankDropdowns() {
     : _tanks.map(t => `<option value="${esc(t.id)}">${esc(tankName(t.id))}</option>`).join('');
   if (prev && _tanks.some(t => t.id === prev)) sel.value = prev;
 
-  // Free Play
-  const fpSel  = document.getElementById('fp-base-tank-select');
-  const fpPrev = fpSel.value;
-  fpSel.innerHTML = _tanks.length === 0
-    ? '<option value="">No tanks online</option>'
-    : _tanks.map(t => `<option value="${esc(t.id)}">${esc(tankName(t.id))}</option>`).join('');
-  if (fpPrev && _tanks.some(t => t.id === fpPrev)) fpSel.value = fpPrev;
-
-  // re-render teams to refresh their "Add Tank" dropdowns
-  if (_gameState) renderTeams(_gameState.teams || {});
+  // Free Play panel re-renders itself from _tanks — no dropdown to update
+  if (_gameState) {
+    renderFpBases(_gameState.freeBases || {}, _gameState.freeReady || {}, _gameState.freeStates || {});
+    // re-render teams to refresh their "Add Tank" dropdowns
+    renderTeams(_gameState.teams || {});
+  }
 }
 
 // ── Free Play ─────────────────────────────────────────────────────────────────
-document.getElementById('btn-toggle-fp-base-form').addEventListener('click', function() {
-  const form = document.getElementById('fp-base-form');
-  const open = form.classList.toggle('open');
-  this.textContent = open ? '✕ Cancel' : '＋ Assign Base';
-  if (open) document.getElementById('fp-base-uid').focus();
-});
-document.getElementById('btn-fp-cancel-base-form').addEventListener('click', () => {
-  document.getElementById('fp-base-form').classList.remove('open');
-  document.getElementById('btn-toggle-fp-base-form').textContent = '＋ Assign Base';
-});
-document.getElementById('btn-fp-assign-base').addEventListener('click', async () => {
-  const tankId = document.getElementById('fp-base-tank-select').value;
-  const uid    = document.getElementById('fp-base-uid').value.trim().toUpperCase();
-  if (!tankId || !uid) { alert('Select a tank and enter a UID.'); return; }
-  await api('PUT', `/api/game/free-bases/${encodeURIComponent(tankId)}`, { uid });
-  document.getElementById('fp-base-uid').value = '';
-  document.getElementById('fp-base-form').classList.remove('open');
-  document.getElementById('btn-toggle-fp-base-form').textContent = '＋ Assign Base';
-});
 document.getElementById('btn-fp-apply-immunity').addEventListener('click', () => {
   const dur = Math.max(1, Number(document.getElementById('fp-immunity-duration').value) || 5);
   api('PATCH', '/api/game', { immunityDuration: dur });
 });
 
+// Render every online tank (plus any configured-but-offline tank) as an inline row.
+// The user types the home-base UID and clicks Set — no dropdown form needed.
 function renderFpBases(freeBases, freeReady, freeStates) {
-  const el      = document.getElementById('fp-bases-list');
-  const entries = Object.entries(freeBases);
-  if (!entries.length) {
-    el.innerHTML = '<div class="empty-list">No bases assigned yet — click ＋ Assign Base above.</div>';
+  const el = document.getElementById('fp-panel-list');
+
+  // Union: online tanks + any already-configured (may be offline)
+  const allIds = [...new Set([..._tanks.map(t => t.id), ...Object.keys(freeBases)])];
+
+  if (!allIds.length) {
+    el.innerHTML = '<div class="empty-list">No tanks online yet. Power on the tanks to see them here.</div>';
     return;
   }
-  el.innerHTML = entries.map(([tid, uid]) => {
-    const ready     = freeReady[tid];
-    const state     = freeStates[tid];
-    const readyHtml = ready
-      ? '<span class="fp-ready-badge ready">&#10003; On Base</span>'
-      : '<span class="fp-ready-badge waiting">&#8987; Waiting</span>';
-    const stateHtml = state
+
+  el.innerHTML = allIds.map(id => {
+    const online  = _tanks.some(t => t.id === id);
+    const uid     = freeBases[id] || '';
+    const inGame  = id in freeBases;
+    const ready   = freeReady[id];
+    const state   = freeStates[id];
+
+    const offlineTag = !online ? '<span class="fp-offline-tag">&nbsp;offline</span>' : '';
+
+    const readyBadge = inGame
+      ? (ready
+          ? '<span class="fp-ready-badge ready">&#10003;&nbsp;On Base</span>'
+          : '<span class="fp-ready-badge waiting">&#8987;&nbsp;Waiting</span>')
+      : '';
+
+    const stateBadge = state
       ? `<span class="fp-state-badge fp-state-${esc(state)}">${esc(state)}</span>` : '';
-    return `<div class="item-row">
-      <span class="item-uid">${esc(uid)}</span>
-      <span class="item-label">&#127968; ${esc(tankName(tid))}</span>
-      ${readyHtml}
-      ${stateHtml}
-      <button class="btn btn-danger" onclick="deleteFpBase('${esc(tid)}')">Remove</button>
+
+    const removeBtn = inGame
+      ? `<button class="btn btn-danger" onclick="deleteFpBase('${esc(id)}')" title="Remove from game">&#10005;</button>`
+      : '';
+
+    // Disable Set for offline tanks that have no base yet
+    const canSet = online || inGame;
+
+    return `<div class="item-row" style="flex-wrap:wrap;gap:0.5rem;align-items:center">
+      <span class="fp-tank-name">${esc(tankName(id))}${offlineTag}</span>
+      <input id="fp-uid-${esc(id)}" class="uid-input fp-uid-input" type="text"
+             placeholder="Home RFID UID" value="${esc(uid)}"
+             ${!canSet ? 'disabled' : ''}
+             onkeydown="if(event.key==='Enter') fpSetBase('${esc(id)}')" />
+      <button class="btn btn-primary" onclick="fpSetBase('${esc(id)}')"
+              ${!canSet ? 'disabled' : ''}>Set</button>
+      ${readyBadge}
+      ${stateBadge}
+      ${removeBtn}
     </div>`;
   }).join('');
+}
+
+async function fpSetBase(tankId) {
+  const inp = document.getElementById(`fp-uid-${tankId}`);
+  if (!inp) return;
+  const uid = inp.value.trim().toUpperCase();
+  if (!uid) { inp.focus(); return; }
+  await api('PUT', `/api/game/free-bases/${encodeURIComponent(tankId)}`, { uid });
 }
 
 async function deleteFpBase(tankId) {
