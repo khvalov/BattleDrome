@@ -53,7 +53,7 @@ const VALID_MODES      = ['free_play', 'ctf_teams', 'ctf_solo', 'treasure_hunt',
 
 // ── Game state ─────────────────────────────────────────────────────────────────
 // Modes:
-//   free_play     — no rules, just RFID_ACTIONS table applies
+//   free_play     — tanks vs all others; RFID home bases for respawn
 //   ctf_teams     — teams capture each other's home RFID bases
 //   ctf_solo      — each tank has a home RFID; capture opponents' bases
 //   treasure_hunt — all configured RFIDs are treasures worth points + optional artifact
@@ -72,9 +72,16 @@ const game = {
   treasures:        {},         // { uid: { label, points, action, actionValue } }
   checkpoints:      [],         // [uid, ...]  — ordered for race
   takenCheckpoints: {},         // { uid: tankId }  — race: who took each checkpoint first
+  // ── Free Play specific ────────────────────────────────────────────────────────
+  freeBases:        {},         // { tankId: uid }  — each tank's home RFID UID
+  freeReady:        {},         // { tankId: bool } — tank confirmed on home base (pre-game)
+  freeStates:       {},         // { tankId: 'alive'|'dead'|'immune' } — in-game state
+  freeScores:       {},         // { tankId: { wins: 0, losses: 0 } }
+  immunityDuration: 5,          // seconds of immunity granted after respawn / at round start
 };
 
 let gameTimer = null;
+const immunityTimers = {};      // { tankId: timeoutId } — free play post-respawn immunity
 
 function gameSnapshot() {
   return {
@@ -89,6 +96,11 @@ function gameSnapshot() {
     treasures:        JSON.parse(JSON.stringify(game.treasures)),
     checkpoints:      [...game.checkpoints],
     takenCheckpoints: { ...game.takenCheckpoints },
+    freeBases:        { ...game.freeBases },
+    freeReady:        { ...game.freeReady },
+    freeStates:       { ...game.freeStates },
+    freeScores:       JSON.parse(JSON.stringify(game.freeScores)),
+    immunityDuration: game.immunityDuration,
   };
 }
 
@@ -97,12 +109,48 @@ function broadcastGame(msgType = 'game_update', extra = {}) {
 }
 
 function startRound() {
-  if (game.status === 'running') return false;
+  if (game.status === 'running') return { ok: false, reason: 'already_running' };
+
+  // Free play: all tanks with configured bases must be on their home bases
+  if (game.mode === 'free_play') {
+    const configuredTanks = Object.keys(game.freeBases);
+    if (configuredTanks.length === 0) {
+      return { ok: false, reason: 'no_tanks_configured' };
+    }
+    const notReady = configuredTanks.filter(id => !game.freeReady[id]);
+    if (notReady.length > 0) {
+      return { ok: false, reason: 'tanks_not_ready', notReady };
+    }
+  }
+
   game.status           = 'running';
   game.scores           = {};
   game.takenCheckpoints = {};
   clearInterval(gameTimer);
   gameTimer = null;
+
+  // Initialise free play in-round state
+  if (game.mode === 'free_play') {
+    game.freeStates = {};
+    game.freeScores = {};
+    for (const tankId of Object.keys(game.freeBases)) {
+      game.freeStates[tankId] = 'immune';   // start immune
+      game.freeScores[tankId] = { wins: 0, losses: 0 };
+      sendCommand(tankId, 'health', 100);
+      sendCommand(tankId, 'ammo',   100);
+      sendCommand(tankId, 'immunable', 1);
+      // Lift immunity after immunityDuration seconds
+      clearTimeout(immunityTimers[tankId]);
+      immunityTimers[tankId] = setTimeout(() => {
+        if (game.status === 'running' && game.freeStates[tankId] === 'immune') {
+          game.freeStates[tankId] = 'alive';
+          sendCommand(tankId, 'immunable', 0);
+          broadcastGame();
+          console.log(`[GAME] Free Play: ${tankId} start immunity ended — alive`);
+        }
+      }, game.immunityDuration * 1000);
+    }
+  }
 
   if (game.timeLimit > 0) {
     game.timeRemaining = game.timeLimit;
@@ -117,13 +165,24 @@ function startRound() {
 
   broadcastGame();
   console.log(`[GAME] Round started — mode: ${game.mode}, timeLimit: ${game.timeLimit}s, scoreTarget: ${game.scoreTarget}`);
-  return true;
+  return { ok: true };
 }
 
 function endRound(reason) {
   if (game.status !== 'running') return;
   clearInterval(gameTimer);
   gameTimer = null;
+  // Cancel pending immunity timers
+  for (const tankId of Object.keys(immunityTimers)) {
+    clearTimeout(immunityTimers[tankId]);
+    delete immunityTimers[tankId];
+  }
+  // Lift immunity on all tanks so they return to normal state
+  if (game.mode === 'free_play') {
+    for (const tankId of Object.keys(game.freeBases)) {
+      sendCommand(tankId, 'immunable', 0);
+    }
+  }
   game.status = 'ended';
   console.log(`[GAME] Round ended — reason: ${reason}`);
   broadcastGame('game_end', { reason });
@@ -132,10 +191,17 @@ function endRound(reason) {
 function resetRound() {
   clearInterval(gameTimer);
   gameTimer = null;
+  for (const tankId of Object.keys(immunityTimers)) {
+    clearTimeout(immunityTimers[tankId]);
+    delete immunityTimers[tankId];
+  }
   game.status           = 'idle';
   game.timeRemaining    = 0;
   game.scores           = {};
   game.takenCheckpoints = {};
+  game.freeStates       = {};
+  game.freeReady        = {};
+  game.freeScores       = {};
   broadcastGame();
   console.log('[GAME] Round reset');
 }
@@ -151,15 +217,73 @@ function getTeamOfTank(tankId) {
   return null;
 }
 
+// Respawn a free-play tank: restore health/ammo, grant immunity, start immunity timer.
+function respawnTank(tankId) {
+  game.freeStates[tankId] = 'immune';
+  sendCommand(tankId, 'health', 100);
+  sendCommand(tankId, 'ammo',   100);
+  sendCommand(tankId, 'immunable', 1);
+  // Update local cache so the hit handler compounds correctly before next telemetry
+  const prev = (tanks[tankId] || {}).telemetry || {};
+  setTank(tankId, { telemetry: { ...prev, health: 100, ammo: 100, immunable: 1 } });
+
+  broadcastGame();
+  console.log(`[GAME] Free Play: ${tankId} respawned — immune for ${game.immunityDuration}s`);
+
+  clearTimeout(immunityTimers[tankId]);
+  immunityTimers[tankId] = setTimeout(() => {
+    if (game.freeStates[tankId] === 'immune') {
+      game.freeStates[tankId] = 'alive';
+      sendCommand(tankId, 'immunable', 0);
+      broadcastGame();
+      console.log(`[GAME] Free Play: ${tankId} immunity ended — alive`);
+    }
+  }, game.immunityDuration * 1000);
+}
+
+// Free play RFID handler — active in both idle (ready-check) and running (respawn) states.
+function handleFreePlay(scannerTankId, uid) {
+  const tankHomeUid = game.freeBases[scannerTankId];
+  const isOwnBase   = tankHomeUid && tankHomeUid === uid;
+  const isAnyBase   = Object.values(game.freeBases).includes(uid);
+
+  if (game.status === 'idle') {
+    // Pre-game: mark the tank ready once it confirms it is on its home base.
+    if (isOwnBase) {
+      game.freeReady[scannerTankId] = true;
+      broadcastGame();
+      console.log(`[GAME] Free Play: ${scannerTankId} ready on home base ${uid}`);
+    }
+    return isOwnBase;  // consume only if own base; fall through for other UIDs
+  }
+
+  if (game.status !== 'running') return false;
+
+  const state = game.freeStates[scannerTankId] || 'alive';
+
+  // Dead tank scans own home base → respawn
+  if (state === 'dead' && isOwnBase) {
+    respawnTank(scannerTankId);
+    return true;
+  }
+
+  // Any tank scanning any registered home base → consume, no effect
+  // (prevents RFID_ACTIONS table from firing on base tags during free play)
+  if (isAnyBase) return true;
+
+  return false;
+}
+
 // Returns true if the game mode handled this RFID scan (prevents fallthrough to RFID_ACTIONS).
 function handleGameRfid(scannerTankId, uid) {
+  if (game.mode === 'free_play') return handleFreePlay(scannerTankId, uid);
   if (game.status !== 'running') return false;
   switch (game.mode) {
     case 'ctf_teams':     return handleCtfTeams(scannerTankId, uid);
     case 'ctf_solo':      return handleCtfSolo(scannerTankId, uid);
     case 'treasure_hunt': return handleTreasureHunt(scannerTankId, uid);
     case 'race':          return handleRace(scannerTankId, uid);
-    default:              return false;  // free_play: fall through to RFID_ACTIONS
+    default:              return false;
   }
 }
 
@@ -361,6 +485,22 @@ mqttClient.on('message', (topic, raw) => {
 
     // Send the authoritative health value back to the receiver
     sendCommand(tankId, 'health', newHealth);
+
+    // Free play kill tracking
+    if (game.mode === 'free_play' && game.status === 'running' && newHealth === 0) {
+      const wasAlive = (game.freeStates[tankId] || 'alive') !== 'dead';
+      if (wasAlive) {
+        game.freeStates[tankId] = 'dead';
+        if (!game.freeScores[tankId])  game.freeScores[tankId]  = { wins: 0, losses: 0 };
+        game.freeScores[tankId].losses++;
+        if (shooterId) {
+          if (!game.freeScores[shooterId]) game.freeScores[shooterId] = { wins: 0, losses: 0 };
+          game.freeScores[shooterId].wins++;
+        }
+        console.log(`[GAME] Free Play: ${tankId} eliminated by ${shooterId || `0x${shooterAddr.toString(16)}`}`);
+        broadcastGame();
+      }
+    }
   }
 
   if (eventType === 'rfid' && payload.event.data) {
@@ -437,6 +577,9 @@ const httpServer = http.createServer(async (req, res) => {
       if (body.timeLimit !== undefined)  game.timeLimit   = Math.max(0, Number(body.timeLimit)  || 0);
       if (body.scoreTarget !== undefined) game.scoreTarget = Math.max(0, Number(body.scoreTarget) || 0);
     }
+    // immunityDuration can be changed any time (takes effect on next respawn)
+    if (body.immunityDuration !== undefined)
+      game.immunityDuration = Math.max(1, Number(body.immunityDuration) || 5);
     broadcastGame();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true }));
@@ -444,9 +587,9 @@ const httpServer = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && url === '/api/game/start') {
-    const ok = startRound();
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok }));
+    const result = startRound();
+    res.writeHead(result.ok ? 200 : 400, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(result));
     return;
   }
 
@@ -537,6 +680,31 @@ const httpServer = http.createServer(async (req, res) => {
 
     if (req.method === 'DELETE') {
       delete game.treasures[uid];
+      broadcastGame();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+  }
+
+  // Free play home bases  { tankId: uid }
+  if (url.startsWith('/api/game/free-bases/')) {
+    const freeBaseTankId = decodeURIComponent(url.slice('/api/game/free-bases/'.length));
+
+    if (req.method === 'PUT') {
+      let body;
+      try { body = await readBody(req); } catch { res.writeHead(400); res.end(); return; }
+      game.freeBases[freeBaseTankId] = String(body.uid || '').toUpperCase();
+      delete game.freeReady[freeBaseTankId];   // require re-scan after base change
+      broadcastGame();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      delete game.freeBases[freeBaseTankId];
+      delete game.freeReady[freeBaseTankId];
       broadcastGame();
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true }));

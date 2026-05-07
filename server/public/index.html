@@ -503,6 +503,25 @@
     .cp-order { width: 22px; height: 22px; border-radius: 50%; background:#21262d; color:#8b949e; display:flex; align-items:center; justify-content:center; font-size:0.65rem; flex-shrink:0; }
     .cp-taken-by { font-size:0.65rem; color:#3fb950; }
 
+    /* ── Free Play ── */
+    .fp-ready-badge {
+      font-size: 0.65rem; padding: 0.15rem 0.5rem;
+      border-radius: 999px; text-transform: uppercase;
+      letter-spacing: 0.06em; font-weight: bold; white-space: nowrap; flex-shrink: 0;
+    }
+    .fp-ready-badge.ready   { background:#1f3d2e; color:#3fb950; border:1px solid #3fb950; }
+    .fp-ready-badge.waiting { background:#2d2007; color:#e3b341; border:1px solid #e3b341; }
+    .fp-state-badge {
+      font-size: 0.62rem; padding: 0.1rem 0.4rem; border-radius: 4px;
+      text-transform: uppercase; letter-spacing: 0.04em; font-weight: bold; flex-shrink: 0;
+    }
+    .fp-state-alive  { background:#1f3d2e; color:#3fb950; border:1px solid #3fb95044; }
+    .fp-state-dead   { background:#2d1a0f; color:#f85149; border:1px solid #f8514944; }
+    .fp-state-immune { background:#1c1533; color:#a371f7; border:1px solid #a371f744; }
+    .fp-wl { display:flex; gap:0.35rem; align-items:center; flex-shrink: 0; }
+    .fp-wins   { font-weight:bold; color:#3fb950; font-size:0.78rem; }
+    .fp-losses { font-weight:bold; color:#f85149; font-size:0.78rem; }
+
     /* ─ Right: scoreboard + timer ─ */
     #game-sidebar {
       padding: 1.25rem;
@@ -734,7 +753,46 @@
 
       <!-- ── Free Play ── -->
       <div class="mode-config-panel" id="panel-free-play">
-        <!-- nothing extra -->
+
+        <div class="config-section-label">Home Bases</div>
+        <p style="font-size:0.72rem;color:#8b949e;margin-bottom:0.75rem">
+          Assign an RFID tag as each tank's home base. Drive each tank onto its base tag — the
+          dashboard shows <strong style="color:#3fb950">On Base</strong> when confirmed.
+          When killed, drive back to your home base to respawn.
+        </p>
+
+        <button class="btn btn-primary" id="btn-toggle-fp-base-form" data-label="Assign Base" style="margin-bottom:0.6rem">
+          ＋ Assign Base
+        </button>
+
+        <div class="inline-form" id="fp-base-form">
+          <div class="inline-form-row">
+            <div class="inline-form-field">
+              <label>Tank</label>
+              <select id="fp-base-tank-select" style="min-width:160px"></select>
+            </div>
+            <div class="inline-form-field">
+              <label>Home RFID UID</label>
+              <input id="fp-base-uid" class="uid-input" type="text" placeholder="AABBCCDD" style="min-width:120px" />
+            </div>
+          </div>
+          <div class="inline-form-actions">
+            <button class="btn btn-success" id="btn-fp-assign-base">Assign</button>
+            <button class="btn" id="btn-fp-cancel-base-form">Cancel</button>
+          </div>
+        </div>
+
+        <div id="fp-bases-list" class="items-list" style="margin-bottom:1rem"></div>
+
+        <div class="config-section-label">Respawn Immunity</div>
+        <div class="game-settings-row" style="margin-bottom:0">
+          <div class="game-setting">
+            <label>Immunity duration after respawn (seconds)</label>
+            <input id="fp-immunity-duration" type="number" min="1" max="120" value="5" style="width:80px" />
+          </div>
+          <button class="btn btn-primary" id="btn-fp-apply-immunity">Apply</button>
+        </div>
+
       </div>
 
       <!-- ── CTF Teams ── -->
@@ -1169,7 +1227,7 @@ function cancelRename() { renderTanks(_tanks); }
 
 // ── Game: mode tabs ───────────────────────────────────────────────────────────
 const MODE_DESCRIPTIONS = {
-  free_play:     'No rules — tanks shoot each other freely. RFID tags apply their configured actions from the RFID Actions table below.',
+  free_play:     'Every tank for itself. Assign an RFID home base to each tank and drive them onto their bases before starting. When killed a tank can still drive (at full speed) but cannot shoot — drive back to your home base to respawn with temporary immunity. Scoring: wins and losses per tank.',
   ctf_teams:     'Create teams, assign tanks, and set a home RFID for each team. A team scores 1 point each time one of their tanks scans an opponent\'s home RFID tag.',
   ctf_solo:      'Each tank has its own home RFID base. Scanning another tank\'s base scores 1 point for the scanner.',
   treasure_hunt: 'Place RFID tags around the arena as treasures. Each scan awards points and optionally applies a power-up (health, ammo, speed…). First to the score target wins, or play until time runs out.',
@@ -1219,11 +1277,36 @@ const startBtn  = document.getElementById('game-start-btn');
 const timerEl   = document.getElementById('game-timer');
 const statusPill = document.getElementById('game-status-pill');
 
-startBtn.addEventListener('click', () => {
+startBtn.addEventListener('click', async () => {
   if (_gameState?.status === 'running') {
     api('POST', '/api/game/stop');
-  } else {
-    api('POST', '/api/game/start');
+    return;
+  }
+  // Free play: client-side pre-check so the user gets a clear message
+  if (_gameState?.mode === 'free_play') {
+    const bases  = _gameState?.freeBases || {};
+    const ready  = _gameState?.freeReady || {};
+    const configured = Object.keys(bases);
+    if (configured.length === 0) {
+      alert('No tanks configured.\n\nAssign a home RFID base to at least one tank first.');
+      return;
+    }
+    const notReady = configured.filter(id => !ready[id]);
+    if (notReady.length > 0) {
+      alert(
+        `Tanks not yet on their home base:\n  ${notReady.map(id => tankName(id)).join('\n  ')}\n\n` +
+        `Drive each tank onto its RFID tag — the badge turns green when confirmed.`
+      );
+      return;
+    }
+  }
+  const res  = await api('POST', '/api/game/start');
+  const data = await res.json().catch(() => ({}));
+  if (!data.ok) {
+    const msg = data.reason === 'no_tanks_configured' ? 'No tanks configured for Free Play.'
+              : data.reason === 'tanks_not_ready'     ? `Tanks not on base: ${(data.notReady||[]).join(', ')}`
+              : data.reason || 'Could not start round.';
+    alert(msg);
   }
 });
 document.getElementById('btn-game-reset').addEventListener('click', () => api('POST', '/api/game/reset'));
@@ -1269,12 +1352,16 @@ function applyGameState(g) {
   renderBases(g.bases);
   renderTreasures(g.treasures);
   renderCheckpoints(g.checkpoints, g.takenCheckpoints);
+  renderFpBases(g.freeBases || {}, g.freeReady || {}, g.freeStates || {});
+  if (document.activeElement !== document.getElementById('fp-immunity-duration'))
+    document.getElementById('fp-immunity-duration').value = g.immunityDuration ?? 5;
 
-  // Scoreboard
-  const hasData = Object.keys(g.scores).length > 0 || running || g.status === 'ended';
-  const competitive = g.mode !== 'free_play';
-  document.getElementById('scoreboard-wrap').style.display = (competitive && hasData) ? '' : 'none';
-  if (competitive) renderScoreboard(g);
+  // Scoreboard — always show for free_play once there are configured tanks or game is active
+  const fpHasData = Object.keys(g.freeBases || {}).length > 0 && (running || g.status !== 'idle' || Object.values(g.freeScores || {}).some(s => s.wins + s.losses > 0));
+  const hasData   = Object.keys(g.scores).length > 0 || running || g.status === 'ended';
+  const showBoard = g.mode === 'free_play' ? fpHasData : hasData;
+  document.getElementById('scoreboard-wrap').style.display = showBoard ? '' : 'none';
+  renderScoreboard(g);
 }
 
 function setTimerDisplay(remaining, timeLimit, status) {
@@ -1303,8 +1390,33 @@ function onGameTick(remaining) {
 // ── Scoreboard ────────────────────────────────────────────────────────────────
 function renderScoreboard(g) {
   const el = document.getElementById('scoreboard');
-  let rows = [];
 
+  // ── Free play: wins / losses format ───────────────────────────────────────
+  if (g.mode === 'free_play') {
+    const baseIds = Object.keys(g.freeBases || {});
+    if (!baseIds.length) { el.innerHTML = '<div class="score-empty">No tanks configured</div>'; return; }
+    const rows = baseIds.map(id => {
+      const sc    = (g.freeScores || {})[id] || { wins: 0, losses: 0 };
+      const state = (g.freeStates || {})[id];
+      return { id, label: tankName(id), wins: sc.wins, losses: sc.losses, state };
+    });
+    rows.sort((a, b) => (b.wins - b.losses) - (a.wins - a.losses));
+    el.innerHTML = rows.map((r, i) => {
+      const stateHtml = r.state
+        ? `<span class="fp-state-badge fp-state-${esc(r.state)}">${esc(r.state)}</span>`
+        : '';
+      return `<div class="score-row">
+        <span class="score-rank">${i + 1}</span>
+        <span class="score-name">${esc(r.label)}</span>
+        ${stateHtml}
+        <span class="fp-wl"><span class="fp-wins">${r.wins}W</span><span class="fp-losses">${r.losses}L</span></span>
+      </div>`;
+    }).join('');
+    return;
+  }
+
+  // ── Other modes: single score ──────────────────────────────────────────────
+  let rows = [];
   if (g.mode === 'ctf_teams') {
     rows = Object.entries(g.teams).map(([id, t]) => ({
       label: t.name, color: t.color, score: g.scores[id] || 0,
@@ -1464,14 +1576,78 @@ async function deleteBase(uid) {
 }
 
 function refreshTankDropdowns() {
-  const sel = document.getElementById('base-tank-select');
+  // CTF Solo
+  const sel  = document.getElementById('base-tank-select');
   const prev = sel.value;
   sel.innerHTML = _tanks.length === 0
     ? '<option value="">No tanks online</option>'
     : _tanks.map(t => `<option value="${esc(t.id)}">${esc(tankName(t.id))}</option>`).join('');
   if (prev && _tanks.some(t => t.id === prev)) sel.value = prev;
+
+  // Free Play
+  const fpSel  = document.getElementById('fp-base-tank-select');
+  const fpPrev = fpSel.value;
+  fpSel.innerHTML = _tanks.length === 0
+    ? '<option value="">No tanks online</option>'
+    : _tanks.map(t => `<option value="${esc(t.id)}">${esc(tankName(t.id))}</option>`).join('');
+  if (fpPrev && _tanks.some(t => t.id === fpPrev)) fpSel.value = fpPrev;
+
   // re-render teams to refresh their "Add Tank" dropdowns
   if (_gameState) renderTeams(_gameState.teams || {});
+}
+
+// ── Free Play ─────────────────────────────────────────────────────────────────
+document.getElementById('btn-toggle-fp-base-form').addEventListener('click', function() {
+  const form = document.getElementById('fp-base-form');
+  const open = form.classList.toggle('open');
+  this.textContent = open ? '✕ Cancel' : '＋ Assign Base';
+  if (open) document.getElementById('fp-base-uid').focus();
+});
+document.getElementById('btn-fp-cancel-base-form').addEventListener('click', () => {
+  document.getElementById('fp-base-form').classList.remove('open');
+  document.getElementById('btn-toggle-fp-base-form').textContent = '＋ Assign Base';
+});
+document.getElementById('btn-fp-assign-base').addEventListener('click', async () => {
+  const tankId = document.getElementById('fp-base-tank-select').value;
+  const uid    = document.getElementById('fp-base-uid').value.trim().toUpperCase();
+  if (!tankId || !uid) { alert('Select a tank and enter a UID.'); return; }
+  await api('PUT', `/api/game/free-bases/${encodeURIComponent(tankId)}`, { uid });
+  document.getElementById('fp-base-uid').value = '';
+  document.getElementById('fp-base-form').classList.remove('open');
+  document.getElementById('btn-toggle-fp-base-form').textContent = '＋ Assign Base';
+});
+document.getElementById('btn-fp-apply-immunity').addEventListener('click', () => {
+  const dur = Math.max(1, Number(document.getElementById('fp-immunity-duration').value) || 5);
+  api('PATCH', '/api/game', { immunityDuration: dur });
+});
+
+function renderFpBases(freeBases, freeReady, freeStates) {
+  const el      = document.getElementById('fp-bases-list');
+  const entries = Object.entries(freeBases);
+  if (!entries.length) {
+    el.innerHTML = '<div class="empty-list">No bases assigned yet — click ＋ Assign Base above.</div>';
+    return;
+  }
+  el.innerHTML = entries.map(([tid, uid]) => {
+    const ready     = freeReady[tid];
+    const state     = freeStates[tid];
+    const readyHtml = ready
+      ? '<span class="fp-ready-badge ready">&#10003; On Base</span>'
+      : '<span class="fp-ready-badge waiting">&#8987; Waiting</span>';
+    const stateHtml = state
+      ? `<span class="fp-state-badge fp-state-${esc(state)}">${esc(state)}</span>` : '';
+    return `<div class="item-row">
+      <span class="item-uid">${esc(uid)}</span>
+      <span class="item-label">&#127968; ${esc(tankName(tid))}</span>
+      ${readyHtml}
+      ${stateHtml}
+      <button class="btn btn-danger" onclick="deleteFpBase('${esc(tid)}')">Remove</button>
+    </div>`;
+  }).join('');
+}
+
+async function deleteFpBase(tankId) {
+  await api('DELETE', `/api/game/free-bases/${encodeURIComponent(tankId)}`);
 }
 
 // ── Treasure Hunt ─────────────────────────────────────────────────────────────
@@ -1587,9 +1763,35 @@ function showGameEnd(g, reason) {
   document.getElementById('game-end-title').textContent = REASON_LABELS[reason] || 'Round Over!';
   document.getElementById('game-end-mode').textContent  = `Mode: ${MODE_LABELS[g.mode] || g.mode}`;
 
+  let winnerText = 'No scores recorded.';
+
+  // ── Free Play ──────────────────────────────────────────────────────────────
+  if (g.mode === 'free_play') {
+    const baseIds    = Object.keys(g.freeBases || {});
+    const freeScores = g.freeScores || {};
+    const rows = baseIds.map(id => {
+      const sc = freeScores[id] || { wins: 0, losses: 0 };
+      return { label: tankName(id), wins: sc.wins, losses: sc.losses };
+    });
+    rows.sort((a, b) => (b.wins - b.losses) - (a.wins - a.losses));
+
+    if (rows.length && rows[0].wins > 0) {
+      winnerText = `🏆 ${rows[0].label} (${rows[0].wins}W / ${rows[0].losses}L)`;
+    }
+    document.getElementById('game-end-winner').innerHTML = esc(winnerText).replace('🏆', '&#127942;');
+    document.getElementById('game-end-scores').innerHTML = rows.map((r, i) => `
+      <div class="score-row">
+        <span class="score-rank">${i + 1}</span>
+        <span class="score-name">${esc(r.label)}</span>
+        <span class="fp-wl"><span class="fp-wins">${r.wins}W</span><span class="fp-losses">${r.losses}L</span></span>
+      </div>`).join('');
+    document.getElementById('game-end-overlay').classList.add('show');
+    return;
+  }
+
+  // ── Other modes ────────────────────────────────────────────────────────────
   const scores   = g.scores;
   const maxScore = Math.max(...Object.values(scores), 0);
-  let winnerText = 'No scores recorded.';
 
   if (maxScore > 0) {
     if (g.mode === 'ctf_teams') {
@@ -1604,7 +1806,6 @@ function showGameEnd(g, reason) {
   }
   document.getElementById('game-end-winner').innerHTML = esc(winnerText).replace('🏆', '&#127942;');
 
-  // Final scores
   let rows = [];
   if (g.mode === 'ctf_teams') {
     rows = Object.entries(g.teams).map(([id, t]) => ({ label: t.name, color: t.color, score: scores[id] || 0 }));

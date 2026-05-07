@@ -247,7 +247,7 @@ void handleIRReceive() {
         int damage = (int)cmd;   // ammoLevel sent by the attacker
 
         if (damage > 0 && damage <= 10) {
-          if (!immunable) {
+          if (!immunable && !isDead) {
             int prev = health;
             health = max(0, health - damage);
 
@@ -263,9 +263,9 @@ void handleIRReceive() {
 
             if (health == 0 && prev > 0) {
               isDead = true;
-              Serial.println(F("[DEAD] Press START to respawn"));
+              Serial.println(F("[DEAD] Drive to home base to respawn"));
             }
-          } else {
+          } else if (!isDead) {
             Serial.println(F("[HIT] Immune — no damage taken"));
           }
         }
@@ -442,6 +442,11 @@ void handleSerialLine(const String& line) {
     if      (strcmp(param, "health")    == 0) {
       int prev = health;
       health = constrain(value, 0, 100);
+      // Server-triggered respawn: health restored above 0 while dead
+      if (isDead && health > 0) {
+        isDead = false;
+        Serial.println(F("[RESPAWN] Server restored health — back in game!"));
+      }
       if      (health < prev) startBlink(180, 0,   0);  // hit  → red blink
       else if (health > prev) startBlink(0,   180, 0);  // heal → green blink
       else                    updateHealthLed();          // no change, just refresh
@@ -522,13 +527,39 @@ void loop() {
   handleIRReceive();
 
   // ── Death state ────────────────────────────────────────────────────────────
-  // Motors stop; only the START button is polled until the player respawns.
+  // Tank can still drive at full speed but cannot shoot.
+  // Respawn is triggered by the server when the tank drives over its home base
+  // RFID tag (server sends "command health 100").
   if (isDead) {
-    portFL.run(0); portFR.run(0);
-    portRL.run(0); portRR.run(0);
+    // Receive commands from server (health restore clears isDead in handleSerialLine)
+    while (Serial2.available()) {
+      char c = (char)Serial2.read();
+      Serial.write(c);
+      if (c == '\n') {
+        handleSerialLine(cmdBuffer);
+        cmdBuffer = "";
+      } else if (c != '\r') {
+        cmdBuffer += c;
+      }
+    }
+
+    // RFID scan — drives to home base and sends rfid event so server can respawn
+    String deadUid = readRfidUid(now);
+    if (deadUid.length() > 0) {
+      Serial.print(F("RFID (dead): ")); Serial.println(deadUid);
+      sendRfidEvent(deadUid);
+    }
+
+    // Drive at full maxSpeed — no shooting
     MePS2.loop();
-    if (MePS2.ButtonPressed(MeJOYSTICK_START)) respawn();
-    return;
+    float lx = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_LX));
+    float ly = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_LY));
+    float rx = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_RX));
+    mecanumDrive(rx, -lx, ly);
+
+    if (now - lastPing >= PING_INTERVAL_MS) { sendPing(); lastPing = now; }
+    if (now - lastTelemetry >= TELEMETRY_INTERVAL_MS) { sendTelemetry(); lastTelemetry = now; }
+    return;  // skip fire logic below
   }
 
   // ── Receive from RPi (commands + system events) ───────────────────────────

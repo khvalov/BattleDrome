@@ -228,7 +228,7 @@ void handleIRReceive() {
         int damage = (int)cmd;   // ammoLevel sent by the attacker
 
         if (damage > 0 && damage <= 10) {
-          if (!immunable) {
+          if (!immunable && !isDead) {
             int prev = health;
             health = max(0, health - damage);
             updateSpeedFromHealth();
@@ -243,9 +243,9 @@ void handleIRReceive() {
 
             if (health == 0 && prev > 0) {
               isDead = true;
-              Serial.println(F("[DEAD] Press START to respawn"));
+              Serial.println(F("[DEAD] Drive to home base to respawn"));
             }
-          } else {
+          } else if (!isDead) {
             Serial.println(F("[HIT] Immune — no damage taken"));
           }
         }
@@ -380,7 +380,13 @@ void handleSerialLine(const String& line) {
     int value = ev["value"] | 0;
 
     if (strcmp(param, "health") == 0) {
+      int prev = health;
       health = constrain(value, 0, 100);
+      // Server-triggered respawn: health restored above 0 while dead
+      if (isDead && health > 0) {
+        isDead = false;
+        Serial.println(F("[RESPAWN] Server restored health — back in game!"));
+      }
       updateSpeedFromHealth();   // Trinity: speed scales with health
     }
     else if (strcmp(param, "ammo")      == 0)  ammo      = constrain(value, 0, 100);
@@ -473,12 +479,28 @@ void loop() {
   }
 
   // ── Death state ────────────────────────────────────────────────────────────
-  // Motors stop; only the START button is polled until the player respawns.
+  // Tank can still drive at full maxSpeed but cannot shoot.
+  // Respawn is server-triggered: drive over home base RFID → server sends "command health 100".
   if (isDead) {
-    stopAll();
+    // RFID scan — send event so server can respawn the tank on home base
+    String deadUid = readRfidUid(now);
+    if (deadUid.length() > 0) {
+      Serial.print(F("[RFID] UID (dead): ")); Serial.println(deadUid);
+      sendRfidEvent(deadUid);
+    }
+
+    // Drive at full maxSpeed regardless of health scaling
     MePS2.loop();
-    if (MePS2.ButtonPressed(MeJOYSTICK_START)) respawn();
-    return;
+    float ly = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_LY));
+    float rx = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_RX));
+    float savedMaxSpeed = currentMaxSpeed;
+    currentMaxSpeed = maxSpeed;     // dead tanks always get full speed
+    differentialDrive(-ly, rx);
+    currentMaxSpeed = savedMaxSpeed;
+
+    if (now - lastPing >= PING_INTERVAL_MS) { sendPing(); lastPing = now; }
+    if (now - lastTelemetry >= TELEMETRY_INTERVAL_MS) { sendTelemetry(); lastTelemetry = now; }
+    return;  // skip fire logic below
   }
 
   // ── IR receive ─────────────────────────────────────────────────────────────
