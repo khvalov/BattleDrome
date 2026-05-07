@@ -9,7 +9,7 @@
 // Timer1 & Timer2 are claimed by MeMegaPi motor PWM (TCCR1/TCCR2 in setup()).
 // Timer5 is claimed by the Servo library bundled with MeMegaPi → __vector_47 clash.
 // Timer4 is free on MegaPi with this motor port configuration.
-#define IR_USE_AVR_TIMER4
+#define IR_USE_AVR_TIMER3
 #include <IRremote.h>     // Library Manager: "IRremote" by shirriff / z3t0 / ArminJo
 #include <ArduinoJson.h>  // Library Manager: "ArduinoJson" by Benoit Blanchon
 
