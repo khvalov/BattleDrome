@@ -683,6 +683,48 @@
     .log-json { color:#8b949e; white-space:pre; overflow-x:auto; }
     @keyframes fadeIn { from { opacity:0; transform:translateY(-4px); } to { opacity:1; transform:translateY(0); } }
 
+    /* ── Page navigation ── */
+    #page-nav {
+      display: flex;
+      gap: 0;
+      margin-bottom: 2rem;
+      border-bottom: 1px solid #21262d;
+    }
+    .page-tab {
+      position: relative;
+      padding: 0.5rem 1.3rem;
+      font-size: 0.78rem;
+      font-family: inherit;
+      cursor: pointer;
+      border: none;
+      background: none;
+      color: #484f58;
+      border-bottom: 2px solid transparent;
+      transition: color 0.15s;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .page-tab:hover { color: #8b949e; }
+    .page-tab.active { color: #e6edf3; border-bottom-color: #58a6ff; }
+    .page-tab-badge {
+      display: none;
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      background: #f85149;
+      color: #fff;
+      border-radius: 999px;
+      font-size: 0.55rem;
+      padding: 0.05rem 0.38rem;
+      font-weight: bold;
+      line-height: 1.4;
+    }
+    .page-tab-badge.show { display: inline; }
+
+    #page-log { display: none; }
+    #page-log #log-list { max-height: none; }
+    #page-log .section-header { margin-bottom: 0.75rem; }
+
     /* ── Win overlay ── */
     #win-overlay {
       display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88);
@@ -719,6 +761,15 @@
   <span id="connection-badge" class="disconnected">CONNECTING</span>
 </header>
 
+<nav id="page-nav">
+  <button class="page-tab active" data-page="dashboard" onclick="showPage('dashboard')">&#9776;&ensp;Dashboard</button>
+  <button class="page-tab" data-page="log" id="tab-log" onclick="showPage('log')">
+    &#128221;&ensp;Telemetry Log
+    <span class="page-tab-badge" id="log-unread-badge"></span>
+  </button>
+</nav>
+
+<div id="page-dashboard">
 <div id="no-tanks">Waiting for tanks to come online&hellip;</div>
 <div id="grid"></div>
 
@@ -1021,14 +1072,20 @@
   </div>
 </div>
 
-<!-- ── Telemetry Log ─────────────────────────────────────────────────────────── -->
-<div class="section" id="log-section">
-  <div class="section-header">
-    <h2>Telemetry Log</h2>
-    <span class="section-meta" id="log-count">0 entries</span>
-    <button class="btn btn-ml" id="log-clear">Clear</button>
+</div><!-- #page-dashboard -->
+
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<!--  TELEMETRY LOG PAGE                                                        -->
+<!-- ══════════════════════════════════════════════════════════════════════════ -->
+<div id="page-log">
+  <div class="section" id="log-section">
+    <div class="section-header">
+      <h2>&#128221; Telemetry Log</h2>
+      <span class="section-meta" id="log-count">0 entries</span>
+      <button class="btn btn-ml" id="log-clear">Clear</button>
+    </div>
+    <div id="log-list"></div>
   </div>
-  <div id="log-list"></div>
 </div>
 
 <!-- ── Win overlay ───────────────────────────────────────────────────────────── -->
@@ -1056,9 +1113,27 @@
 'use strict';
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let _tanks     = [];
-let _gameState = null;
+let _tanks       = [];
+let _gameState   = null;
 let _ws;
+let _currentPage = 'dashboard';
+let _logUnread   = 0;
+
+// ── Page navigation ───────────────────────────────────────────────────────────
+function showPage(name) {
+  _currentPage = name;
+  document.getElementById('page-dashboard').style.display = name === 'dashboard' ? '' : 'none';
+  document.getElementById('page-log').style.display       = name === 'log'       ? '' : 'none';
+  for (const tab of document.querySelectorAll('.page-tab')) {
+    tab.classList.toggle('active', tab.dataset.page === name);
+  }
+  if (name === 'log') {
+    _logUnread = 0;
+    const badge = document.getElementById('log-unread-badge');
+    badge.textContent = '';
+    badge.classList.remove('show');
+  }
+}
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 const badge = document.getElementById('connection-badge');
@@ -1907,6 +1982,23 @@ document.getElementById('log-clear').addEventListener('click', () => {
 function appendLog({ tankId, receivedAt, payload }) {
   const type = payload?.event?.type || 'unknown';
   const ts   = new Date(receivedAt).toISOString().replace('T', ' ').slice(0, -1) + 'Z';
+
+  // ── Auto-fill Free Play home-base RFID input ──────────────────────────────
+  // When a tank powers up on its RFID tag it immediately sends an rfid event.
+  // Pre-populate the UID field so the operator just clicks "Set Base".
+  if (type === 'rfid') {
+    const scannedUid = payload?.event?.data?.uid;
+    if (scannedUid) {
+      const inp = document.getElementById(`fp-uid-${tankId}`);
+      // Only fill if field is empty — never overwrite user input
+      if (inp && !inp.value.trim()) {
+        inp.value = scannedUid.toUpperCase();
+        inp.style.borderColor = '#3fb950';  // brief green flash
+        setTimeout(() => inp.style.borderColor = '', 1500);
+      }
+    }
+  }
+
   const entry = document.createElement('div');
   entry.className = `log-entry type-${type}`;
   entry.innerHTML = `
@@ -1920,6 +2012,14 @@ function appendLog({ tankId, receivedAt, payload }) {
   while (logList.children.length > 100) logList.removeChild(logList.lastChild);
   const n = logList.children.length;
   logCount.textContent = `${n} entr${n === 1 ? 'y' : 'ies'}`;
+
+  // ── Unread badge on Log tab when user is on Dashboard ─────────────────────
+  if (_currentPage !== 'log' && type !== 'telemetry') {  // skip routine telemetry noise
+    _logUnread++;
+    const badge = document.getElementById('log-unread-badge');
+    badge.textContent = _logUnread > 99 ? '99+' : _logUnread;
+    badge.classList.add('show');
+  }
 }
 
 // ── Win overlay ───────────────────────────────────────────────────────────────
