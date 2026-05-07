@@ -47,10 +47,11 @@ const uint8_t IR_PIN = A12;  // = pin 66 on ATmega2560
 // ── IR receivers (dual, time-multiplexed) ─────────────────────────────────────
 // A11 = pin 65, A10 = pin 64.  IRremote uses a timer ISR to sample the active
 // pin.  We swap every IR_SWITCH_MS ms so both receivers get coverage.
-// A full NEC frame is ~68 ms; 50 ms gives reliable capture.
+// A full NEC frame is ~68 ms — switch interval must be longer than that so
+// IrReceiver.begin() (which resets the decoder) never fires mid-frame.
 const uint8_t IR_RX_PIN_1 = A11;   // first receiver  (= pin 65)
 const uint8_t IR_RX_PIN_2 = A10;   // second receiver (= pin 64)
-const unsigned long IR_SWITCH_MS = 50;
+const unsigned long IR_SWITCH_MS = 200;  // > 68 ms NEC frame; was 50 (too short)
 uint8_t       activeRxPin  = IR_RX_PIN_1;
 unsigned long lastRxSwitch = 0;
 
@@ -233,6 +234,10 @@ void switchIRReceiver() {
 void handleIRReceive() {
   if (IrReceiver.decode()) {
     uint32_t raw = IrReceiver.decodedIRData.decodedRawData;
+
+    // DEBUG — remove once hits are confirmed working
+    Serial.print(F("[IR RAW] 0x")); Serial.print(raw, HEX);
+    Serial.print(F(" proto=")); Serial.println((int)IrReceiver.decodedIRData.protocol);
 
     // Reject repeat codes and zeroed frames
     if (raw != 0 && raw != 0xFFFFFFFF) {
