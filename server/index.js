@@ -12,32 +12,35 @@ const HTTP_PORT = process.env.PORT || 8080;
 // ── RFID action table ──────────────────────────────────────────────────────────
 // Managed at runtime via the dashboard UI (GET/POST/DELETE /api/rfid).
 // Schema per entry:
-//   action    : 'ammo' | 'health' | 'speed' | 'immune' | 'win'
-//   recipient : 'tank' | 'others' | 'teammate' | 'all'
-//   value     : number — positive = increase, negative = decrease
-//               (for 'immune': >0 = enable, ≤0 = disable)
+//   action    : 'health' | 'ammo' | 'speed' | 'immune' | 'maxspeed' | 'minspeed' | 'ammopower' | 'points' | 'win'
+//   operation : 'add' | 'reduce' | 'set'   (ignored for 'immune' and 'win')
+//   recipient : 'tank' | 'others' | 'teammate' | 'other_teams' | 'all'
+//   value     : number — amount to add, reduce, or set to
+//               (for 'immune': seconds of immunity to grant)
 //               (for 'win': value is ignored)
 const RFID_ACTIONS = {
   // Example — uncomment and replace UIDs with your physical tags:
-  // '26211603': { action: 'health', recipient: 'tank',   value:  20 }, // Medkit
-  // 'A1B2C3D4': { action: 'ammo',   recipient: 'tank',   value:  50 }, // Ammo crate
-  // 'B2C3D4E5': { action: 'immune', recipient: 'tank',   value:   1 }, // Shield
-  // 'C3D4E5F6': { action: 'health', recipient: 'others', value: -20 }, // Landmine
-  // 'D4E5F6A7': { action: 'win',    recipient: 'tank',   value:   0 }, // Win flag
+  // '26211603': { action: 'health', operation: 'add', recipient: 'tank',   value:  20 }, // Medkit
+  // 'A1B2C3D4': { action: 'ammo',   operation: 'add', recipient: 'tank',   value:  50 }, // Ammo crate
+  // 'B2C3D4E5': { action: 'immune', operation: 'add', recipient: 'tank',   value:   5 }, // Shield (5s)
+  // 'C3D4E5F6': { action: 'health', operation: 'reduce', recipient: 'others', value: 20 }, // Landmine
+  // 'D4E5F6A7': { action: 'win',    operation: 'add', recipient: 'tank',   value:   0 }, // Win flag
 };
 
 // Map user-facing action names to Arduino command params
 const ACTION_PARAM = {
-  ammo:     'ammo',
-  health:   'health',
-  speed:    'fireSpeed',
-  immune:   'immunable',
-  maxspeed: 'maxSpeed',
-  minspeed: 'minSpeed',
-  win:      null,  // handled separately
+  ammo:      'ammo',
+  health:    'health',
+  speed:     'fireSpeed',
+  immune:    'immunable',
+  maxspeed:  'maxSpeed',
+  minspeed:  'minSpeed',
+  ammopower: 'ammoLevel',
+  points:    null,  // handled separately (game.scores)
+  win:       null,  // handled separately
 };
 
-// Valid ranges for each param (used for delta clamping)
+// Valid ranges for each param (used for clamping)
 const PARAM_RANGE = {
   ammo:      [0, 100],
   health:    [0, 100],
@@ -45,10 +48,12 @@ const PARAM_RANGE = {
   immunable: [0, 1],
   maxSpeed:  [1, 255],
   minSpeed:  [0, 255],
+  ammoLevel: [1, 10],
 };
 
-const VALID_ACTIONS    = ['ammo', 'health', 'speed', 'immune', 'maxspeed', 'minspeed', 'win'];
-const VALID_RECIPIENTS = ['tank', 'others', 'teammate', 'all'];
+const VALID_ACTIONS    = ['ammo', 'health', 'speed', 'immune', 'maxspeed', 'minspeed', 'ammopower', 'points', 'win'];
+const VALID_OPERATIONS = ['add', 'reduce', 'set'];
+const VALID_RECIPIENTS = ['tank', 'others', 'teammate', 'other_teams', 'all'];
 const VALID_MODES      = ['free_play', 'ctf_teams', 'ctf_solo', 'treasure_hunt', 'race'];
 
 // ── Game state ─────────────────────────────────────────────────────────────────
@@ -79,12 +84,27 @@ const game = {
   freeScores:       {},         // { tankId: { wins: 0, losses: 0 } }
   immunityDuration: 5,          // seconds of immunity granted after respawn / at round start
   // ── CTF Teams specific ─────────────────────────────────────────────────────────
-  ctfStates:        {},         // { tankId: 'alive'|'dead'|'immune' } — per-tank state in CTF Teams
-  ctfWinner:        null,       // { teamId, teamName, teamColor, tankIds[] } — set when a team wins
+  ctfStates:        {},         // { tankId: 'alive'|'dead'|'immune'|'eliminated' } — per-tank state
+  ctfTeamStates:    {},         // { teamId: 'alive'|'eliminated' } — per-team state
+  ctfCaptured:      {},         // { teamId: [capturedTeamId, ...] } — bases captured by each team
+  ctfWinner:        null,       // { teamId, teamName, teamColor, tankIds[], capturedBy } — set when a team wins
+  // ── CTF Solo specific ──────────────────────────────────────────────────────────
+  soloBases:        {},         // { tankId: uid }  — each tank's home RFID UID
+  soloReady:        {},         // { tankId: bool } — tank confirmed on home base (pre-game)
+  soloStates:       {},         // { tankId: 'alive'|'dead'|'immune'|'eliminated' }
+  soloCaptured:     {},         // { tankId: [capturedTankId, ...] } — bases captured by each tank
+  soloWinner:       null,       // { tankId } — set when a solo winner is determined
+  treasureShooting: false,     // whether shooting is enabled in treasure hunt
+  treasureScanned:  {},        // { tankId: [uid, ...] } — tags each tank already scanned
+  treasureWinner:   null,      // { tankId, score } or { tankId: null } for draw
+  raceShooting:     false,     // whether shooting is enabled in race
+  raceProgress:     {},        // { tankId: { nextIndex: 0, laps: 0, correct: 0, incorrect: 0 } }
+  raceWinner:       null,      // { tankId, laps } or { tankId: null } for draw
 };
 
 let gameTimer = null;
 const immunityTimers = {};      // { tankId: timeoutId } — free play post-respawn immunity
+const speedDebounce  = {};      // { tankId: timeoutId } — treasure hunt speed reduction timers
 
 function gameSnapshot() {
   return {
@@ -105,7 +125,20 @@ function gameSnapshot() {
     freeScores:       JSON.parse(JSON.stringify(game.freeScores)),
     immunityDuration: game.immunityDuration,
     ctfStates:        { ...game.ctfStates },
+    ctfTeamStates:    { ...game.ctfTeamStates },
+    ctfCaptured:      JSON.parse(JSON.stringify(game.ctfCaptured)),
     ctfWinner:        game.ctfWinner ? { ...game.ctfWinner } : null,
+    soloBases:        { ...game.soloBases },
+    soloReady:        { ...game.soloReady },
+    soloStates:       { ...game.soloStates },
+    soloCaptured:     JSON.parse(JSON.stringify(game.soloCaptured)),
+    soloWinner:       game.soloWinner ? { ...game.soloWinner } : null,
+    treasureShooting: game.treasureShooting,
+    treasureScanned:  JSON.parse(JSON.stringify(game.treasureScanned)),
+    treasureWinner:   game.treasureWinner ? { ...game.treasureWinner } : null,
+    raceShooting:     game.raceShooting,
+    raceProgress:     JSON.parse(JSON.stringify(game.raceProgress)),
+    raceWinner:       game.raceWinner ? { ...game.raceWinner } : null,
   };
 }
 
@@ -144,6 +177,18 @@ function startRound() {
     }
   }
 
+  // CTF Solo: validate at least 2 tanks with bases, all ready
+  if (game.mode === 'ctf_solo') {
+    const configuredTanks = Object.keys(game.soloBases);
+    if (configuredTanks.length < 2) {
+      return { ok: false, reason: 'need_at_least_2_tanks' };
+    }
+    const notReady = configuredTanks.filter(id => !game.soloReady[id]);
+    if (notReady.length > 0) {
+      return { ok: false, reason: 'tanks_not_ready', notReady };
+    }
+  }
+
   game.status           = 'running';
   game.scores           = {};
   game.takenCheckpoints = {};
@@ -175,10 +220,14 @@ function startRound() {
 
   // Initialise CTF Teams in-round state
   if (game.mode === 'ctf_teams') {
-    game.ctfStates = {};
-    game.ctfWinner = null;
+    game.ctfStates     = {};
+    game.ctfTeamStates = {};
+    game.ctfCaptured   = {};
+    game.ctfWinner     = null;
     for (const [teamId, team] of Object.entries(game.teams)) {
-      game.scores[teamId] = 0;
+      game.scores[teamId]        = 0;
+      game.ctfTeamStates[teamId] = 'alive';
+      game.ctfCaptured[teamId]   = [];
       for (const tankId of (team.tankIds || [])) {
         game.ctfStates[tankId] = 'immune';
         sendCommand(tankId, 'health', 100);
@@ -193,6 +242,67 @@ function startRound() {
             console.log(`[GAME] CTF Teams: ${tankId} start immunity ended — alive`);
           }
         }, game.immunityDuration * 1000);
+      }
+    }
+  }
+
+  // Initialise CTF Solo in-round state
+  if (game.mode === 'ctf_solo') {
+    game.soloStates   = {};
+    game.soloCaptured = {};
+    game.scores       = {};
+    for (const tankId of Object.keys(game.soloBases)) {
+      game.soloStates[tankId]   = 'immune';
+      game.soloCaptured[tankId] = [];
+      game.scores[tankId]       = 0;
+      sendCommand(tankId, 'health', 100);
+      sendCommand(tankId, 'ammo',   100);
+      sendCommand(tankId, 'immunable', 1);
+      clearTimeout(immunityTimers[tankId]);
+      immunityTimers[tankId] = setTimeout(() => {
+        if (game.status === 'running' && game.soloStates[tankId] === 'immune') {
+          game.soloStates[tankId] = 'alive';
+          sendCommand(tankId, 'immunable', 0);
+          broadcastGame();
+          console.log(`[GAME] CTF Solo: ${tankId} start immunity ended — alive`);
+        }
+      }, game.immunityDuration * 1000);
+    }
+  }
+
+  // Initialise Treasure Hunt in-round state
+  if (game.mode === 'treasure_hunt') {
+    game.treasureScanned = {};
+    game.treasureWinner  = null;
+    // All currently online tanks participate
+    for (const tankId of Object.keys(tanks)) {
+      game.scores[tankId]          = 0;
+      game.treasureScanned[tankId] = [];
+      sendCommand(tankId, 'health', 100);
+      if (game.treasureShooting) {
+        sendCommand(tankId, 'ammo', 100);
+        sendCommand(tankId, 'immunable', 0);
+      } else {
+        sendCommand(tankId, 'ammo', 0);
+        sendCommand(tankId, 'immunable', 1); // immune = can't take damage
+      }
+    }
+  }
+
+  // Initialise Race in-round state
+  if (game.mode === 'race') {
+    game.raceProgress = {};
+    game.raceWinner   = null;
+    for (const tankId of Object.keys(tanks)) {
+      game.scores[tankId] = 0;
+      game.raceProgress[tankId] = { nextIndex: 0, laps: 0, correct: 0, incorrect: 0 };
+      sendCommand(tankId, 'health', 100);
+      if (game.raceShooting) {
+        sendCommand(tankId, 'ammo', 100);
+        sendCommand(tankId, 'immunable', 0);
+      } else {
+        sendCommand(tankId, 'ammo', 0);
+        sendCommand(tankId, 'immunable', 1);
       }
     }
   }
@@ -228,7 +338,7 @@ function endRound(reason) {
       sendCommand(tankId, 'immunable', 0);
     }
   }
-  // CTF Teams: lift immunity and stop all tanks (set maxSpeed=0) when time is up
+  // CTF Teams: lift immunity and stop all tanks; on time_up determine winner by captures
   if (game.mode === 'ctf_teams') {
     for (const [, team] of Object.entries(game.teams)) {
       for (const tankId of (team.tankIds || [])) {
@@ -237,6 +347,89 @@ function endRound(reason) {
           sendCommand(tankId, 'maxSpeed', 0);
         }
       }
+    }
+    // On time_up with no winner yet: team with most captures wins
+    if (reason === 'time_up' && !game.ctfWinner) {
+      const aliveTeams = Object.entries(game.ctfTeamStates).filter(([, s]) => s === 'alive');
+      if (aliveTeams.length > 0) {
+        const sorted = aliveTeams
+          .map(([id]) => ({ id, score: game.scores[id] || 0 }))
+          .sort((a, b) => b.score - a.score);
+        const winnerId  = sorted[0].id;
+        const winnerTeam = game.teams[winnerId];
+        game.ctfWinner = {
+          teamId:     winnerId,
+          teamName:   winnerTeam.name,
+          teamColor:  winnerTeam.color,
+          tankIds:    winnerTeam.tankIds || [],
+          capturedBy: null,
+        };
+        console.log(`[GAME] CTF Teams time up: ${winnerTeam.name} wins with ${sorted[0].score} captures`);
+      }
+    }
+  }
+  // CTF Solo: lift immunity, stop all tanks, determine winner on time_up
+  if (game.mode === 'ctf_solo') {
+    for (const tankId of Object.keys(game.soloBases)) {
+      sendCommand(tankId, 'immunable', 0);
+      if (reason === 'time_up') {
+        sendCommand(tankId, 'maxSpeed', 0);
+      }
+    }
+    // On time_up: winner is whoever captured the most bases
+    if (reason === 'time_up' && !game.soloWinner) {
+      const scores = Object.entries(game.scores).sort((a, b) => b[1] - a[1]);
+      if (scores.length > 0 && scores[0][1] > 0) {
+        game.soloWinner = { tankId: scores[0][0] };
+        console.log(`[GAME] CTF Solo time up: ${scores[0][0]} wins with ${scores[0][1]} captures`);
+      } else {
+        game.soloWinner = { tankId: null }; // no captures — draw
+        console.log(`[GAME] CTF Solo time up: no captures — draw`);
+      }
+    }
+  }
+  // Treasure Hunt: stop all tanks, determine winner by points
+  if (game.mode === 'treasure_hunt') {
+    for (const tankId of Object.keys(game.treasureScanned)) {
+      sendCommand(tankId, 'maxSpeed', 0);
+      sendCommand(tankId, 'immunable', 1);
+    }
+    // Clear speed debounce timers
+    for (const tankId of Object.keys(speedDebounce)) {
+      clearTimeout(speedDebounce[tankId]);
+      delete speedDebounce[tankId];
+    }
+    // Rank by points
+    const ranked = Object.entries(game.scores)
+      .sort((a, b) => b[1] - a[1]);
+    if (ranked.length > 0 && ranked[0][1] > 0) {
+      game.treasureWinner = { tankId: ranked[0][0], score: ranked[0][1] };
+      console.log(`[GAME] Treasure Hunt ended: ${ranked[0][0]} wins with ${ranked[0][1]} points`);
+    } else {
+      game.treasureWinner = { tankId: null, score: 0 };
+      console.log(`[GAME] Treasure Hunt ended: no points scored — draw`);
+    }
+  }
+  // Race: stop all tanks, rank by laps then checkpoint progress
+  if (game.mode === 'race') {
+    for (const tankId of Object.keys(game.raceProgress)) {
+      sendCommand(tankId, 'maxSpeed', 0);
+      sendCommand(tankId, 'immunable', 1);
+    }
+    for (const tankId of Object.keys(speedDebounce)) {
+      clearTimeout(speedDebounce[tankId]);
+      delete speedDebounce[tankId];
+    }
+    // Rank: most laps first, then most checkpoints in current lap
+    const ranked = Object.entries(game.raceProgress)
+      .map(([tid, p]) => ({ tid, laps: p.laps, nextIndex: p.nextIndex, correct: p.correct }))
+      .sort((a, b) => b.laps - a.laps || b.nextIndex - a.nextIndex || b.correct - a.correct);
+    if (ranked.length > 0 && (ranked[0].laps > 0 || ranked[0].nextIndex > 0)) {
+      game.raceWinner = { tankId: ranked[0].tid, laps: ranked[0].laps };
+      console.log(`[GAME] Race ended: ${ranked[0].tid} wins with ${ranked[0].laps} laps`);
+    } else {
+      game.raceWinner = { tankId: null, laps: 0 };
+      console.log(`[GAME] Race ended: no progress — draw`);
     }
   }
   game.status = 'ended';
@@ -259,7 +452,22 @@ function resetRound() {
   game.freeReady        = {};
   game.freeScores       = {};
   game.ctfStates        = {};
+  game.ctfTeamStates    = {};
+  game.ctfCaptured      = {};
   game.ctfWinner        = null;
+  game.soloStates       = {};
+  game.soloReady        = {};
+  game.soloCaptured     = {};
+  game.soloWinner       = null;
+  game.treasureScanned  = {};
+  game.treasureWinner   = null;
+  game.raceProgress     = {};
+  game.raceWinner       = null;
+  // Clear speed debounce timers
+  for (const tankId of Object.keys(speedDebounce)) {
+    clearTimeout(speedDebounce[tankId]);
+    delete speedDebounce[tankId];
+  }
   // Restore maxSpeed on all known tanks (in case it was zeroed on time_up)
   for (const [tankId] of Object.entries(tanks)) {
     sendCommand(tankId, 'maxSpeed', 160);
@@ -362,10 +570,10 @@ function handleFreePlay(scannerTankId, uid) {
 // Returns true if the game mode handled this RFID scan (prevents fallthrough to RFID_ACTIONS).
 function handleGameRfid(scannerTankId, uid) {
   if (game.mode === 'free_play') return handleFreePlay(scannerTankId, uid);
+  if (game.mode === 'ctf_solo')  return handleCtfSolo(scannerTankId, uid);
   if (game.status !== 'running') return false;
   switch (game.mode) {
     case 'ctf_teams':     return handleCtfTeams(scannerTankId, uid);
-    case 'ctf_solo':      return handleCtfSolo(scannerTankId, uid);
     case 'treasure_hunt': return handleTreasureHunt(scannerTankId, uid);
     case 'race':          return handleRace(scannerTankId, uid);
     default:              return false;
@@ -386,9 +594,9 @@ function handleCtfTeams(scannerTankId, uid) {
   }
   if (!homeTeamId) return false; // not a registered home base → fall through
 
-  // Scanning own team's base → respawn if dead
+  // Scanning own team's base → respawn if dead (only if team is still alive)
   if (scannerInfo.teamId === homeTeamId) {
-    if (scannerState === 'dead') {
+    if (scannerState === 'dead' && game.ctfTeamStates[homeTeamId] === 'alive') {
       respawnCtfTank(scannerTankId);
       console.log(`[GAME] CTF Teams: ${scannerTankId} respawned at own base`);
     } else {
@@ -397,53 +605,202 @@ function handleCtfTeams(scannerTankId, uid) {
     return true;
   }
 
-  // Dead tanks cannot capture opponent bases
-  if (scannerState === 'dead') {
-    console.log(`[GAME] CTF Teams: ${scannerTankId} is dead — cannot capture ${homeTeam.name}'s base`);
+  // Eliminated/dead tanks cannot capture opponent bases
+  if (scannerState === 'dead' || scannerState === 'eliminated') {
+    console.log(`[GAME] CTF Teams: ${scannerTankId} is ${scannerState} — cannot capture ${homeTeam.name}'s base`);
     return true;
   }
 
-  // Alive/immune tank scans opponent base → instant win!
-  const winnerTeam = game.teams[scannerInfo.teamId];
-  game.ctfWinner = {
-    teamId:   scannerInfo.teamId,
-    teamName: winnerTeam.name,
-    teamColor: winnerTeam.color,
-    tankIds:  winnerTeam.tankIds || [],
-    capturedBy: scannerTankId,
-  };
+  // Scanner's team is eliminated — can't capture
+  if (game.ctfTeamStates[scannerInfo.teamId] === 'eliminated') {
+    console.log(`[GAME] CTF Teams: ${scannerTankId}'s team is eliminated — cannot capture`);
+    return true;
+  }
+
+  // Target team already eliminated — base can't be captured again
+  if (game.ctfTeamStates[homeTeamId] === 'eliminated') {
+    console.log(`[GAME] CTF Teams: ${homeTeam.name} already eliminated — no effect`);
+    return true;
+  }
+
+  // ── Capture! Eliminate the entire target team ─────────────────────────────
+  eliminateCtfTeam(homeTeamId, scannerTankId);
   addScore(scannerInfo.teamId, 1);
-  console.log(`[GAME] CTF Teams: ${scannerTankId} captured ${homeTeam.name}'s base! ${winnerTeam.name} WINS!`);
-  endRound('base_captured');
-  return true;
-}
+  if (!game.ctfCaptured[scannerInfo.teamId]) game.ctfCaptured[scannerInfo.teamId] = [];
+  game.ctfCaptured[scannerInfo.teamId].push(homeTeamId);
+  console.log(`[GAME] CTF Teams: ${scannerTankId} captured ${homeTeam.name}'s base! Team ${homeTeam.name} ELIMINATED!`);
 
-function handleCtfSolo(scannerTankId, uid) {
-  const ownerTankId = game.bases[uid];
-  if (!ownerTankId) return false; // not a registered base → fall through
-
-  if (ownerTankId === scannerTankId) {
-    console.log(`[GAME] CTF Solo: ${scannerTankId} scanned own base — no capture`);
-    return true;
-  }
-
-  addScore(scannerTankId, 1);
-  console.log(`[GAME] CTF Solo: ${scannerTankId} captured ${ownerTankId}'s base! Score: ${game.scores[scannerTankId]}`);
+  // Check win condition
+  checkCtfTeamsWin(scannerInfo.teamId, scannerTankId);
   broadcastGame();
   return true;
 }
 
-function handleTreasureHunt(scannerTankId, uid) {
-  const treasure = game.treasures[uid];
-  if (!treasure) return false; // not a registered treasure → fall through
+// Eliminate an entire CTF team: stop all tanks completely.
+function eliminateCtfTeam(teamId, eliminatedBy) {
+  game.ctfTeamStates[teamId] = 'eliminated';
+  const team = game.teams[teamId];
+  for (const tankId of (team.tankIds || [])) {
+    game.ctfStates[tankId] = 'eliminated';
+    sendCommand(tankId, 'maxSpeed', 0);
+    sendCommand(tankId, 'health', 0);
+    sendCommand(tankId, 'ammo', 0);
+    sendCommand(tankId, 'immunable', 0);
+    clearTimeout(immunityTimers[tankId]);
+    delete immunityTimers[tankId];
+  }
+  console.log(`[GAME] CTF Teams: Team ${team.name} ELIMINATED by ${eliminatedBy} — all tanks stopped`);
+}
 
-  const pts = Number(treasure.points) || 0;
+// Check if CTF Teams has a winner.
+function checkCtfTeamsWin(capturingTeamId, capturingTankId) {
+  const aliveTeams = Object.entries(game.ctfTeamStates).filter(([, s]) => s === 'alive');
+
+  if (aliveTeams.length <= 1) {
+    if (aliveTeams.length === 1) {
+      const [winnerId] = aliveTeams[0];
+      const winnerTeam = game.teams[winnerId];
+      game.ctfWinner = {
+        teamId:     winnerId,
+        teamName:   winnerTeam.name,
+        teamColor:  winnerTeam.color,
+        tankIds:    winnerTeam.tankIds || [],
+        capturedBy: capturingTankId,
+      };
+      console.log(`[GAME] CTF Teams: ${winnerTeam.name} is the last team standing — WINS!`);
+    } else {
+      game.ctfWinner = { teamId: null, teamName: 'Draw', teamColor: '#888', tankIds: [], capturedBy: null };
+      console.log(`[GAME] CTF Teams: All teams eliminated — draw!`);
+    }
+    endRound('last_standing');
+  }
+}
+
+function handleCtfSolo(scannerTankId, uid) {
+  const tankHomeUid = game.soloBases[scannerTankId];
+  const isOwnBase   = tankHomeUid && tankHomeUid === uid;
+  const isAnyBase   = Object.values(game.soloBases).includes(uid);
+
+  // ── Pre-game (idle): ready-check ──────────────────────────────────────────
+  if (game.status === 'idle') {
+    if (isOwnBase) {
+      game.soloReady[scannerTankId] = true;
+      broadcastGame();
+      console.log(`[GAME] CTF Solo: ${scannerTankId} ready on home base ${uid}`);
+    }
+    return isOwnBase;
+  }
+
+  if (game.status !== 'running') return false;
+
+  const state = game.soloStates[scannerTankId];
+  if (!state) return false; // scanner not in this game
+
+  // Eliminated tanks can't do anything
+  if (state === 'eliminated') {
+    console.log(`[GAME] CTF Solo: ${scannerTankId} is eliminated — scan ignored`);
+    return true;
+  }
+
+  // Scanning own base — no effect (just consume)
+  if (isOwnBase) {
+    console.log(`[GAME] CTF Solo: ${scannerTankId} scanned own base — no effect`);
+    return true;
+  }
+
+  // Find which tank owns the scanned base
+  const ownerTankId = Object.entries(game.soloBases).find(([, u]) => u === uid)?.[0];
+  if (!ownerTankId) return false; // not a registered base
+
+  // Dead tanks cannot capture
+  if (state === 'dead') {
+    console.log(`[GAME] CTF Solo: ${scannerTankId} is dead — cannot capture`);
+    return true;
+  }
+
+  // Owner already eliminated — base can't be captured again
+  if (game.soloStates[ownerTankId] === 'eliminated') {
+    console.log(`[GAME] CTF Solo: ${ownerTankId}'s base already captured — no effect`);
+    return true;
+  }
+
+  // ── Capture! Eliminate the owner ──────────────────────────────────────────
+  eliminateSoloTank(ownerTankId, scannerTankId);
+  addScore(scannerTankId, 1);
+  if (!game.soloCaptured[scannerTankId]) game.soloCaptured[scannerTankId] = [];
+  game.soloCaptured[scannerTankId].push(ownerTankId);
+  console.log(`[GAME] CTF Solo: ${scannerTankId} captured ${ownerTankId}'s base! Score: ${game.scores[scannerTankId]}`);
+
+  // Check win condition: unlimited time → last tank standing wins
+  checkSoloWin();
+  broadcastGame();
+  return true;
+}
+
+// Eliminate a solo tank: stop it completely.
+function eliminateSoloTank(tankId, eliminatedBy) {
+  game.soloStates[tankId] = 'eliminated';
+  sendCommand(tankId, 'maxSpeed', 0);
+  sendCommand(tankId, 'health', 0);
+  sendCommand(tankId, 'ammo', 0);
+  sendCommand(tankId, 'immunable', 0);
+  clearTimeout(immunityTimers[tankId]);
+  delete immunityTimers[tankId];
+  console.log(`[GAME] CTF Solo: ${tankId} ELIMINATED by ${eliminatedBy}`);
+}
+
+// Check if CTF Solo has a winner.
+function checkSoloWin() {
+  const alive = Object.entries(game.soloStates).filter(([, s]) => s !== 'eliminated');
+  if (alive.length <= 1 && game.timeLimit === 0) {
+    // Unlimited time: last tank standing wins
+    if (alive.length === 1) {
+      game.soloWinner = { tankId: alive[0][0] };
+      console.log(`[GAME] CTF Solo: ${alive[0][0]} is the last tank standing — WINS!`);
+    } else {
+      game.soloWinner = { tankId: null }; // draw — everyone eliminated
+      console.log(`[GAME] CTF Solo: All tanks eliminated — draw!`);
+    }
+    endRound('last_standing');
+  } else if (alive.length <= 1 && game.timeLimit > 0) {
+    // Timed mode: if only 1 left, they win immediately
+    if (alive.length === 1) {
+      game.soloWinner = { tankId: alive[0][0] };
+      console.log(`[GAME] CTF Solo: ${alive[0][0]} is the last tank standing — WINS!`);
+      endRound('last_standing');
+    }
+  }
+}
+
+function handleTreasureHunt(scannerTankId, uid) {
+  if (game.status !== 'running') return false;
+
+  // Check if this tank already scanned this tag
+  if (!game.treasureScanned[scannerTankId]) game.treasureScanned[scannerTankId] = [];
+  if (game.treasureScanned[scannerTankId].includes(uid)) {
+    console.log(`[GAME] Treasure: ${scannerTankId} already scanned ${uid} — ignored`);
+    return true; // consume the event but no points
+  }
+
+  // Determine points: look up RFID_ACTIONS for a 'points' action, else default to 1
+  let pts = 1;
+  const entry = RFID_ACTIONS[uid];
+  if (entry && entry.action === 'points') {
+    pts = Number(entry.value) || 1;
+  } else if (!entry) {
+    // Auto-register unknown tag as "Add 1 point to self"
+    RFID_ACTIONS[uid] = { action: 'points', operation: 'add', recipient: 'tank', value: 1 };
+    broadcast({ type: 'rfid_actions', actions: RFID_ACTIONS });
+    console.log(`[GAME] Treasure: auto-registered unknown tag ${uid} as 1 point`);
+  }
+
+  game.treasureScanned[scannerTankId].push(uid);
   addScore(scannerTankId, pts);
   console.log(`[GAME] Treasure: ${scannerTankId} collected ${uid} (+${pts} pts). Total: ${game.scores[scannerTankId]}`);
 
-  // Apply artifact effect if configured
-  if (treasure.action && treasure.action !== 'none') {
-    applyRfidAction(scannerTankId, { action: treasure.action, recipient: 'tank', value: treasure.actionValue || 0 });
+  // If the tag has a non-points RFID action, apply it too
+  if (entry && entry.action !== 'points') {
+    applyRfidAction(scannerTankId, entry);
   }
 
   const reachedTarget = game.scoreTarget > 0 && game.scores[scannerTankId] >= game.scoreTarget;
@@ -453,17 +810,44 @@ function handleTreasureHunt(scannerTankId, uid) {
 }
 
 function handleRace(scannerTankId, uid) {
-  if (!game.checkpoints.includes(uid)) return false; // not a checkpoint → fall through
-  if (game.takenCheckpoints[uid]) return true;        // already taken → consume, no score
+  if (game.status !== 'running') return false;
 
-  game.takenCheckpoints[uid] = scannerTankId;
-  addScore(scannerTankId, 1);
-  console.log(`[GAME] Race: ${scannerTankId} hit checkpoint ${uid}. Score: ${game.scores[scannerTankId]}`);
+  // Auto-register unknown tags as next checkpoint
+  if (!game.checkpoints.includes(uid)) {
+    game.checkpoints.push(uid);
+    console.log(`[GAME] Race: auto-registered checkpoint ${uid} at position ${game.checkpoints.length}`);
+    broadcastGame();
+    // Don't return — fall through to process it as a checkpoint scan
+  }
 
-  const allTaken      = game.checkpoints.every(cp => game.takenCheckpoints[cp]);
+  const cpIndex = game.checkpoints.indexOf(uid);
+  if (!game.raceProgress[scannerTankId]) {
+    game.raceProgress[scannerTankId] = { nextIndex: 0, laps: 0, correct: 0, incorrect: 0 };
+    game.scores[scannerTankId] = 0;
+  }
+  const prog = game.raceProgress[scannerTankId];
+
+  if (cpIndex === prog.nextIndex) {
+    // Correct checkpoint
+    prog.correct++;
+    prog.nextIndex = (prog.nextIndex + 1) % game.checkpoints.length;
+    // Completed a lap?
+    if (prog.nextIndex === 0) {
+      prog.laps++;
+      addScore(scannerTankId, 1);
+      console.log(`[GAME] Race: ${scannerTankId} completed lap ${prog.laps}!`);
+    } else {
+      console.log(`[GAME] Race: ${scannerTankId} passed checkpoint ${cpIndex + 1}/${game.checkpoints.length} (correct)`);
+    }
+  } else {
+    // Wrong checkpoint
+    prog.incorrect++;
+    console.log(`[GAME] Race: ${scannerTankId} scanned checkpoint ${cpIndex + 1} but expected ${prog.nextIndex + 1} (incorrect)`);
+  }
+
   const reachedTarget = game.scoreTarget > 0 && game.scores[scannerTankId] >= game.scoreTarget;
   broadcastGame();
-  if (allTaken || reachedTarget) endRound(reachedTarget ? 'score_target' : 'all_checkpoints');
+  if (reachedTarget) endRound('score_target');
   return true;
 }
 
@@ -500,7 +884,7 @@ function sendCommand(tankId, param, value) {
 }
 
 function applyRfidAction(scannerTankId, entry) {
-  const { action, recipient, value } = entry;
+  const { action, operation, recipient, value } = entry;
 
   // ── Win condition ──────────────────────────────────────────────────────────
   if (action === 'win') {
@@ -508,9 +892,6 @@ function applyRfidAction(scannerTankId, entry) {
     broadcast({ type: 'win', tankId: scannerTankId, recipient });
     return;
   }
-
-  const param = ACTION_PARAM[action];
-  if (!param) return;
 
   // ── Resolve target tanks ───────────────────────────────────────────────────
   const allIds = Object.keys(tanks);
@@ -529,28 +910,73 @@ function applyRfidAction(scannerTankId, entry) {
       }
       break;
     }
+    case 'other_teams': {
+      const info = getTeamOfTank(scannerTankId);
+      if (info) {
+        const myTeamTankIds = new Set(info.team.tankIds || []);
+        targetIds = allIds.filter(id => !myTeamTankIds.has(id));
+      } else {
+        targetIds = allIds.filter(id => id !== scannerTankId);
+      }
+      break;
+    }
     default:         targetIds = [scannerTankId];
   }
 
-  // ── Compute and send commands ──────────────────────────────────────────────
-  for (const targetId of targetIds) {
-    let newValue;
-
-    if (param === 'immunable') {
-      // Immune is boolean — positive enables, zero/negative disables
-      newValue = value > 0 ? 1 : 0;
-    } else {
-      // Delta: add value to current, then clamp to valid range
-      const rawCurrent = tanks[targetId]?.telemetry?.[param];
-      if (rawCurrent === undefined) {
-        console.warn(`[RFID] WARNING: ${param} not in telemetry for ${targetId} — defaulting current to 0`);
-      }
-      const current = rawCurrent ?? 0;
-      const [min, max] = PARAM_RANGE[param] || [0, 100];
-      newValue = Math.min(max, Math.max(min, current + value));
-      console.log(`[RFID] ${param}: current=${current} delta=${value} → newValue=${newValue} (range ${min}–${max})`);
+  // ── Points (game.scores) — no Arduino command ─────────────────────────────
+  if (action === 'points') {
+    for (const targetId of targetIds) {
+      const current = game.scores[targetId] || 0;
+      let newVal;
+      if (operation === 'set')         newVal = value;
+      else if (operation === 'reduce') newVal = current - Math.abs(value);
+      else                             newVal = current + Math.abs(value);  // add (default)
+      game.scores[targetId] = Math.max(0, newVal);
+      console.log(`[RFID] points: ${targetId} ${operation} ${value} → ${game.scores[targetId]}`);
     }
+    broadcastGame();
+    return;
+  }
 
+  // ── Immune — timed immunity ───────────────────────────────────────────────
+  if (action === 'immune') {
+    const durationSec = Math.max(1, Math.abs(value) || 5);
+    for (const targetId of targetIds) {
+      sendCommand(targetId, 'immunable', 1);
+      console.log(`[RFID] immune: ${targetId} granted ${durationSec}s immunity`);
+      // Auto-remove immunity after duration
+      clearTimeout(immunityTimers[`rfid_${targetId}`]);
+      immunityTimers[`rfid_${targetId}`] = setTimeout(() => {
+        sendCommand(targetId, 'immunable', 0);
+        delete immunityTimers[`rfid_${targetId}`];
+        console.log(`[RFID] immune: ${targetId} immunity expired`);
+      }, durationSec * 1000);
+    }
+    return;
+  }
+
+  // ── Standard param actions ────────────────────────────────────────────────
+  const param = ACTION_PARAM[action];
+  if (!param) return;
+
+  for (const targetId of targetIds) {
+    const rawCurrent = tanks[targetId]?.telemetry?.[param];
+    if (rawCurrent === undefined) {
+      console.warn(`[RFID] WARNING: ${param} not in telemetry for ${targetId} — defaulting current to 0`);
+    }
+    const current = rawCurrent ?? 0;
+    const [min, max] = PARAM_RANGE[param] || [0, 100];
+
+    let newValue;
+    if (operation === 'set') {
+      newValue = Math.min(max, Math.max(min, Math.abs(value)));
+    } else if (operation === 'reduce') {
+      newValue = Math.min(max, Math.max(min, current - Math.abs(value)));
+    } else {
+      // add (default, also handles legacy entries without operation field)
+      newValue = Math.min(max, Math.max(min, current + Math.abs(value)));
+    }
+    console.log(`[RFID] ${param}: ${operation || 'add'} current=${current} value=${value} → newValue=${newValue} (range ${min}–${max})`);
     sendCommand(targetId, param, newValue);
   }
 }
@@ -633,14 +1059,64 @@ mqttClient.on('message', (topic, raw) => {
       }
     }
 
-    // CTF Teams kill tracking — dead tank must return to own base to respawn
+    // CTF Teams kill tracking — dead tank must return to own base to respawn (unless team eliminated)
     if (game.mode === 'ctf_teams' && game.status === 'running' && newHealth === 0) {
-      const wasAlive = (game.ctfStates[tankId] || 'alive') !== 'dead';
-      if (wasAlive) {
+      const state = game.ctfStates[tankId] || 'alive';
+      if (state !== 'dead' && state !== 'eliminated') {
         game.ctfStates[tankId] = 'dead';
-        console.log(`[GAME] CTF Teams: ${tankId} eliminated by ${shooterId || `0x${shooterAddr.toString(16)}`} — must return to base`);
+        console.log(`[GAME] CTF Teams: ${tankId} killed by ${shooterId || `0x${shooterAddr.toString(16)}`} — must return to base`);
         broadcastGame();
       }
+    }
+
+    // CTF Solo kill tracking — killed tank is eliminated (no respawn)
+    if (game.mode === 'ctf_solo' && game.status === 'running' && newHealth === 0) {
+      const state = game.soloStates[tankId];
+      if (state && state !== 'eliminated' && state !== 'dead') {
+        eliminateSoloTank(tankId, shooterId || `0x${shooterAddr.toString(16)}`);
+        if (shooterId) addScore(shooterId, 1);
+        checkSoloWin();
+        broadcastGame();
+      }
+    }
+
+    // Treasure Hunt hit handling — no health damage, 50% speed for 3s
+    if (game.mode === 'treasure_hunt' && game.status === 'running' && game.treasureShooting) {
+      // Restore health (no damage in treasure hunt)
+      sendCommand(tankId, 'health', 100);
+      patch.telemetry = { ...prev, health: 100 };
+
+      // Halve maxSpeed for 3 seconds
+      sendCommand(tankId, 'maxSpeed', 80); // 50% of 160
+      console.log(`[GAME] Treasure Hunt: ${tankId} hit — speed halved for 3s`);
+
+      // Clear any existing speed debounce timer
+      if (speedDebounce[tankId]) clearTimeout(speedDebounce[tankId]);
+      speedDebounce[tankId] = setTimeout(() => {
+        if (game.status === 'running' && game.mode === 'treasure_hunt') {
+          sendCommand(tankId, 'maxSpeed', 160);
+          console.log(`[GAME] Treasure Hunt: ${tankId} speed restored`);
+        }
+        delete speedDebounce[tankId];
+      }, 3000);
+    }
+
+    // Race hit handling — no health damage, 50% speed for 3s
+    if (game.mode === 'race' && game.status === 'running' && game.raceShooting) {
+      sendCommand(tankId, 'health', 100);
+      patch.telemetry = { ...prev, health: 100 };
+
+      sendCommand(tankId, 'maxSpeed', 80);
+      console.log(`[GAME] Race: ${tankId} hit — speed halved for 3s`);
+
+      if (speedDebounce[tankId]) clearTimeout(speedDebounce[tankId]);
+      speedDebounce[tankId] = setTimeout(() => {
+        if (game.status === 'running' && game.mode === 'race') {
+          sendCommand(tankId, 'maxSpeed', 160);
+          console.log(`[GAME] Race: ${tankId} speed restored`);
+        }
+        delete speedDebounce[tankId];
+      }, 3000);
     }
   }
 
@@ -721,6 +1197,11 @@ const httpServer = http.createServer(async (req, res) => {
     // immunityDuration can be changed any time (takes effect on next respawn)
     if (body.immunityDuration !== undefined)
       game.immunityDuration = Math.max(1, Number(body.immunityDuration) || 5);
+    // treasureShooting can be changed any time (takes effect on next round start)
+    if (body.treasureShooting !== undefined)
+      game.treasureShooting = !!body.treasureShooting;
+    if (body.raceShooting !== undefined)
+      game.raceShooting = !!body.raceShooting;
     broadcastGame();
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ ok: true }));
@@ -777,7 +1258,32 @@ const httpServer = http.createServer(async (req, res) => {
     }
   }
 
-  // CTF Solo bases
+  // CTF Solo bases  { tankId: uid }  — mirrors free-bases pattern
+  if (url.startsWith('/api/game/solo-bases/')) {
+    const soloBaseTankId = decodeURIComponent(url.slice('/api/game/solo-bases/'.length));
+
+    if (req.method === 'PUT') {
+      let body;
+      try { body = await readBody(req); } catch { res.writeHead(400); res.end(); return; }
+      game.soloBases[soloBaseTankId] = String(body.uid || '').toUpperCase();
+      delete game.soloReady[soloBaseTankId];   // require re-scan after base change
+      broadcastGame();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    if (req.method === 'DELETE') {
+      delete game.soloBases[soloBaseTankId];
+      delete game.soloReady[soloBaseTankId];
+      broadcastGame();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+  }
+
+  // CTF Solo bases (legacy — kept for backward compat)
   if (url.startsWith('/api/game/bases/')) {
     const uid = decodeURIComponent(url.slice('/api/game/bases/'.length)).toUpperCase();
 
@@ -879,14 +1385,15 @@ const httpServer = http.createServer(async (req, res) => {
       try { body = await readBody(req); } catch {
         res.writeHead(400); res.end('Invalid JSON'); return;
       }
-      const { uid, action, recipient, value } = body;
+      const { uid, action, operation, recipient, value } = body;
 
       if (!uid || !VALID_ACTIONS.includes(action) || !VALID_RECIPIENTS.includes(recipient)) {
         res.writeHead(422); res.end('Invalid fields'); return;
       }
+      const op = VALID_OPERATIONS.includes(operation) ? operation : 'add';
 
       const key = String(uid).toUpperCase();
-      RFID_ACTIONS[key] = { action, recipient, value: Number(value) || 0 };
+      RFID_ACTIONS[key] = { action, operation: op, recipient, value: Number(value) || 0 };
       console.log(`[RFID] Action saved: ${key} →`, RFID_ACTIONS[key]);
       broadcast({ type: 'rfid_actions', actions: RFID_ACTIONS });
 

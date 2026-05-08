@@ -48,7 +48,42 @@ Cards gain a green border and pulse animation when a tank comes online, and fade
 
 **Tank display name:** click the ✎ pencil icon on any card to set a custom display name (shown instead of the raw hostname). The raw ID is shown as a small grey label alongside. The name is stored server-side only — never sent to the tank hardware.
 
-Below the tank grid, a **Telemetry Log** panel shows all incoming MQTT messages in raw JSON format — newest first, colour-coded by event type (`fire` = orange-red, `telemetry` = blue, `system` = green, `error` = red, `rfid` = amber). Keeps the last 100 entries. Has a Clear button.
+### Pages
+
+The dashboard has three top-level tabs:
+
+| Tab | Purpose |
+|:---|:---|
+| **Dashboard** | Tank cards, Game panel (mode config, timer, scoreboard) |
+| **Tag Reader** | Shows every RFID UID scanned by any tank — large monospace UID, which tank scanned it, timestamp, Copy button, and inline action Configure/Edit button. Also displays all configured RFID rules with edit/delete. |
+| **Telemetry Log** | All incoming MQTT messages in raw JSON — newest first, colour-coded by event type. Filterable by tank and event type. Keeps last 100 entries. |
+
+Both Tag Reader and Telemetry Log tabs show an unread-count badge when new events arrive while you're on another page.
+
+### Game Modes
+
+| Mode | Rules |
+|:---|:---|
+| **Free Play** | FFA. Each tank gets a home RFID. Killed tanks can drive but not shoot — return to home base to respawn with immunity. Wins/losses scoring. |
+| **CTF — Teams** | Teams with shared home RFID. When a team's base is captured, the **entire team is eliminated** (all tanks stop). Last team standing wins. Timed: most captures wins if multiple teams alive. Dead tanks respawn at own base (unless team eliminated). |
+| **CTF — Solo** | Each tank has its own home RFID (assigned like Free Play). Base captured = eliminated. Kill by shooting = eliminated (no respawn). Timed: most captures wins. Unlimited: last standing wins. |
+| **Treasure Hunt** | Tanks collect points by scanning RFID tags. Each tank can only scan a tag once (other tanks can still scan it). Unregistered tags auto-register as 1 point. Optional shooting — hits reduce speed by 50% for 3s (no health damage). Highest score at time up wins. |
+| **Race** | Tanks race through ordered RFID checkpoints (looping). Each completed loop = 1 lap. Wrong checkpoint = no advance. Unregistered tags auto-append to checkpoint order. Optional shooting — hits reduce speed by 50% for 3s (no health damage). Most laps wins. Score target = lap target. |
+
+### Game REST API
+
+| Method | Path | Body | Description |
+|:---|:---|:---|:---|
+| `PATCH` | `/api/game` | `{ mode, timeLimit, scoreTarget, immunityDuration, treasureShooting, raceShooting }` | Update game config |
+| `POST` | `/api/game/start` | — | Start round |
+| `POST` | `/api/game/stop` | — | Stop round |
+| `POST` | `/api/game/reset` | — | Reset to idle |
+| `PUT` | `/api/game/teams/:teamId` | `{ name, color, homeUid, tankIds }` | Create/update team |
+| `DELETE` | `/api/game/teams/:teamId` | — | Delete team |
+| `PUT` | `/api/game/free-bases/:tankId` | `{ uid }` | Set free play home base |
+| `DELETE` | `/api/game/free-bases/:tankId` | — | Remove free play base |
+| `PUT` | `/api/game/solo-bases/:tankId` | `{ uid }` | Set CTF solo home base |
+| `DELETE` | `/api/game/solo-bases/:tankId` | — | Remove CTF solo base |
 
 ---
 
@@ -73,7 +108,7 @@ Valid `param` values: `health`, `ammo`, `ammoLevel`, `fireSpeed`, `immunable`, `
 | Method | Path | Body | Description |
 |:---|:---|:---|:---|
 | `GET` | `/api/rfid` | — | Return all configured rules |
-| `POST` | `/api/rfid` | `{ uid, action, recipient, value }` | Add or update a rule |
+| `POST` | `/api/rfid` | `{ uid, action, operation, recipient, value }` | Add or update a rule |
 | `DELETE` | `/api/rfid/:uid` | — | Remove a rule |
 
 ### Tank display name
@@ -88,30 +123,48 @@ Send `{ displayName: "" }` to clear back to the raw hostname.
 
 ## RFID action table
 
-Rules are managed at runtime via the dashboard UI or the REST API above.
+Rules are managed at runtime via the **Tag Reader** tab or the REST API above. Each scanned tag shows a Configure/Edit button inline.
 
 ### Schema
 
 | Field | Type | Values |
 |:---|:---|:---|
 | `uid` | string | Uppercase hex, e.g. `A1B2C3D4` |
-| `action` | string | `ammo` · `health` · `speed` · `immune` · `maxspeed` · `minspeed` · `win` |
-| `recipient` | string | `tank` · `others` · `teammate` · `all` |
-| `value` | number | Delta applied to current value (positive = increase, negative = decrease) |
+| `action` | string | `health` · `ammo` · `speed` · `immune` · `maxspeed` · `minspeed` · `ammopower` · `points` · `win` |
+| `operation` | string | `add` · `reduce` · `set` (ignored for `immune` and `win`) |
+| `recipient` | string | `tank` · `others` · `teammate` · `other_teams` · `all` |
+| `value` | number | Amount to add, reduce, or set to (for `immune`: seconds of immunity) |
 
 ### Action mapping
 
-| Action | Arduino param | Range |
-|:---|:---|:---|
-| `ammo` | `ammo` | 0–100 |
-| `health` | `health` | 0–100 |
-| `speed` | `fireSpeed` | 1–10 |
-| `immune` | `immunable` | boolean (>0 = enable) |
-| `maxspeed` | `maxSpeed` | 1–255 |
-| `minspeed` | `minSpeed` | 0–255 |
-| `win` | *(broadcast only)* | — |
+| Action | Arduino param | Range | Notes |
+|:---|:---|:---|:---|
+| `health` | `health` | 0–100 | |
+| `ammo` | `ammo` | 0–100 | |
+| `speed` | `fireSpeed` | 1–10 | Shot cooldown |
+| `immune` | `immunable` | bool | Value = seconds; server auto-removes |
+| `maxspeed` | `maxSpeed` | 1–255 | |
+| `minspeed` | `minSpeed` | 0–255 | |
+| `ammopower` | `ammoLevel` | 1–10 | Damage per shot |
+| `points` | *(server-only)* | — | Modifies `game.scores` |
+| `win` | *(broadcast only)* | — | Dashboard overlay |
 
-The server reads the tank's current telemetry value, adds the delta, clamps to the valid range, and sends the resulting absolute value as a `command`.
+### Operation modes
+
+- **add** — adds `value` to the tank's current telemetry value, clamped to valid range
+- **reduce** — subtracts `|value|` from current, clamped to valid range
+- **set** — sets the param to exactly `|value|`, clamped to valid range
+- Legacy rules without `operation` default to `add`
+
+### Recipients
+
+| Recipient | Targets |
+|:---|:---|
+| `tank` | Scanning tank only (self) |
+| `others` | All tanks except the scanner |
+| `teammate` | Scanner's teammates in CTF Teams; falls back to self if no team |
+| `other_teams` | All tanks NOT on the scanner's team; falls back to `others` if no team |
+| `all` | Every online tank |
 
 ### Win action
 

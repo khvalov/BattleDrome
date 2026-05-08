@@ -107,6 +107,80 @@ npm install   # deps: mqtt, ws
 npm start     # dashboard at http://localhost:8080
 ```
 
+The dashboard has three tabs: **Dashboard** (tank cards, game panel), **Tag Reader** (live RFID UID display + RFID action rule editor — configure, edit, and delete action rules inline), and **Telemetry Log** (raw MQTT messages with tankId and event type filters).
+
+### Game Modes
+
+| Mode | Description |
+|---|---|
+| `free_play` | Every tank for itself. Each tank gets a home RFID base. Killed tanks can still drive but cannot shoot — return to home base to respawn with temporary immunity. Scoring: wins/losses per tank. |
+| `ctf_teams` | Team-based capture the flag. Create teams with tanks and a home RFID base each. When a team's base is captured, the **entire team** is eliminated (all tanks stop — no movement, no shooting). Last team standing wins. Timed: most captures wins if multiple teams alive at time up. Killed tanks respawn at own base (unless team is eliminated). |
+| `ctf_solo` | Solo capture the flag. Each tank gets a home RFID base (assigned like free_play). If your base is captured, you're eliminated. Timed: most captures wins. Unlimited: last tank standing wins. No respawn — killed by shooting also eliminates. |
+| `treasure_hunt` | Tanks collect points by scanning RFID tags. Each tank can only scan a tag once (other tanks can still scan it). Tags with a `points` RFID action use that value; unregistered tags are worth 1 point and auto-added to the RFID rules table. Optional shooting — hits reduce speed by 50% for 3 seconds (no health damage). Highest score when time runs out wins. |
+| `race` | Tanks race through ordered RFID checkpoints (1 → 2 → … → N → loop). Each completed loop = 1 lap. Scanning wrong checkpoint = no advance (tracked as incorrect). Unregistered tags auto-append to checkpoint order when scanned. Optional shooting — hits reduce speed by 50% for 3 seconds (no health damage). Most laps wins. Score target = lap target. |
+
+**Game state fields (server `game` object):**
+
+- `mode`, `status` (`idle`/`running`/`ended`), `timeLimit`, `timeRemaining`, `scoreTarget`
+- `scores` — `{ id: number }` (tankId or teamId depending on mode)
+- `freeBases`, `freeReady`, `freeStates`, `freeScores` — free play state
+- `teams` — `{ teamId: { name, color, homeUid, tankIds[] } }`
+- `ctfStates` — `{ tankId: 'alive'|'dead'|'immune'|'eliminated' }`
+- `ctfTeamStates` — `{ teamId: 'alive'|'eliminated' }`
+- `ctfCaptured` — `{ teamId: [capturedTeamId, ...] }`
+- `ctfWinner` — `{ teamId, teamName, teamColor, tankIds[], capturedBy }`
+- `soloBases`, `soloReady`, `soloStates`, `soloCaptured`, `soloWinner` — CTF solo state
+- `immunityDuration` — seconds of post-respawn / start immunity
+- `treasureShooting` — whether shooting is enabled in treasure hunt
+- `treasureScanned` — `{ tankId: [uid, ...] }` — tags each tank already scanned
+- `treasureWinner` — `{ tankId, score }` or `{ tankId: null }` for draw
+- `raceShooting` — whether shooting is enabled in race
+- `raceProgress` — `{ tankId: { nextIndex, laps, correct, incorrect } }` — per-tank race state
+- `raceWinner` — `{ tankId, laps }` or `{ tankId: null }` for draw
+
+### RFID Action Rules
+
+RFID action rules are configured in the **Tag Reader** tab. When a tank scans an RFID tag, the server looks up the UID in `RFID_ACTIONS`; if a rule exists it applies the action to the resolved targets.
+
+**Schema per rule:**
+
+| Field | Values | Description |
+|---|---|---|
+| `action` | `health`, `ammo`, `speed`, `immune`, `maxspeed`, `minspeed`, `ammopower`, `points`, `win` | What to affect |
+| `operation` | `add`, `reduce`, `set` | How to apply the value (ignored for `immune` and `win`) |
+| `recipient` | `tank`, `others`, `teammate`, `other_teams`, `all` | Who receives the effect |
+| `value` | number | Amount — meaning depends on action (see below) |
+
+**Action → firmware mapping:**
+
+| Action | Arduino param | Notes |
+|---|---|---|
+| `health` | `health` | 0–100 |
+| `ammo` | `ammo` | 0–100 |
+| `speed` | `fireSpeed` | 1–10 (shot cooldown) |
+| `ammopower` | `ammoLevel` | 1–10 (damage per shot) |
+| `immune` | `immunable` | Value = seconds of immunity; server auto-removes after duration |
+| `maxspeed` | `maxSpeed` | 1–255 |
+| `minspeed` | `minSpeed` | 0–255 |
+| `points` | *(server-only)* | Modifies `game.scores` — no command sent to tank |
+| `win` | *(server-only)* | Broadcasts win overlay to dashboard |
+
+**Recipient resolution:**
+
+| Recipient | Targets |
+|---|---|
+| `tank` | The scanning tank only |
+| `others` | All tanks except the scanner |
+| `teammate` | Scanner's teammates (CTF Teams); falls back to self if no team |
+| `other_teams` | All tanks NOT on the scanner's team; falls back to `others` if no team |
+| `all` | Every online tank |
+
+**Operation modes** (`add`/`reduce`/`set`):
+- `add` — adds `value` to the current telemetry value (clamped to valid range)
+- `reduce` — subtracts `|value|` from current (clamped to valid range)
+- `set` — sets the param to exactly `|value|` (clamped)
+- Legacy rules without `operation` default to `add`
+
 ## Sending commands to a tank
 
 ```bash
