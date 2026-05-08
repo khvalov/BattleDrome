@@ -67,19 +67,6 @@ int  ammoLevel = 3;    // 1–10: damage per shot (also sent in IR frame cmd byt
 int  fireSpeed = 6;    // 1–10: minimum ms between shots
 bool immunable = false;
 
-// ── Health-based speed scaling ─────────────────────────────────────────────────
-// Max PWM scales linearly from 30 % at health=0 to 100 % at health=100.
-// Keeps the tank mobile but penalises damage — more interesting than hard stop.
-const float SPEED_MIN_MULT = 0.30f;
-const float SPEED_MAX_MULT = 1.00f;
-float currentMaxSpeed = maxSpeed;   // recalculated by updateSpeedFromHealth()
-
-void updateSpeedFromHealth() {
-  float pct  = constrain(health, 0, 100) / 100.0f;
-  float mult = SPEED_MIN_MULT + pct * (SPEED_MAX_MULT - SPEED_MIN_MULT);
-  currentMaxSpeed = maxSpeed * mult;
-}
-
 // ── Death / respawn ────────────────────────────────────────────────────────────
 bool isDead = false;
 
@@ -87,7 +74,6 @@ void respawn() {
   health    = 100;
   ammo      = 100;
   isDead    = false;
-  updateSpeedFromHealth();
   Serial.println(F("[RESPAWN] Tank back in game!"));
 }
 
@@ -128,20 +114,12 @@ float applyMinSpd(float v) {
   return 0.0f;
 }
 
-// Differential drive: forward = ±255, turn = ±255.
-// Left stick Y  → forward/backward.
-// Right stick X → turn.
-void differentialDrive(float forward, float turn) {
-  float left  = forward + turn;
-  float right = forward - turn;
-
-  // Scale down so neither wheel exceeds currentMaxSpeed
-  float maxVal = max(abs(left), abs(right));
-  if (maxVal > currentMaxSpeed) {
-    float scale = currentMaxSpeed / maxVal;
-    left  *= scale;
-    right *= scale;
-  }
+// Tank-stick drive: each joystick stick controls one track directly.
+// Left stick Y  → left track (up = forward, down = backward).
+// Right stick Y → right track (up = forward, down = backward).
+void tankDrive(float leftInput, float rightInput) {
+  float left  = constrain(leftInput,  -(float)maxSpeed, (float)maxSpeed);
+  float right = constrain(rightInput, -(float)maxSpeed, (float)maxSpeed);
 
   left  = applyMinSpd(left);
   right = applyMinSpd(right);
@@ -231,7 +209,6 @@ void handleIRReceive() {
           if (!immunable && !isDead) {
             int prev = health;
             health = max(0, health - damage);
-            updateSpeedFromHealth();
 
             uint8_t rxNum = (activeRxPin == IR_RX_PIN_1) ? 1 : 2;
             Serial.print(F("[HIT] IR")); Serial.print(rxNum);
@@ -387,16 +364,12 @@ void handleSerialLine(const String& line) {
         isDead = false;
         Serial.println(F("[RESPAWN] Server restored health — back in game!"));
       }
-      updateSpeedFromHealth();   // Trinity: speed scales with health
     }
     else if (strcmp(param, "ammo")      == 0)  ammo      = constrain(value, 0, 100);
     else if (strcmp(param, "ammoLevel") == 0)  ammoLevel = constrain(value, 1, 10);
     else if (strcmp(param, "fireSpeed") == 0)  fireSpeed = constrain(value, 1, 10);
     else if (strcmp(param, "immunable") == 0)  immunable = (value != 0);
-    else if (strcmp(param, "maxSpeed")  == 0) {
-      maxSpeed = constrain(value, 1, 255);
-      updateSpeedFromHealth();   // recalculate cap at new maxSpeed
-    }
+    else if (strcmp(param, "maxSpeed")  == 0)  maxSpeed  = constrain(value, 1, 255);
     else if (strcmp(param, "minSpeed")  == 0)  minSpeed  = constrain(value, 0, 255);
 
     Serial.print(F("[CMD] ")); Serial.print(param);
@@ -452,8 +425,6 @@ void setup() {
   delay(1000);
   stopAll();
 
-  updateSpeedFromHealth();
-
   Serial.println(F("================================="));
   Serial.println(F("  Trinity ready — RPi mode       "));
   Serial.println(F("  Serial2 @ 115200 → Raspberry Pi"));
@@ -479,7 +450,7 @@ void loop() {
   }
 
   // ── Death state ────────────────────────────────────────────────────────────
-  // Tank can still drive at full maxSpeed but cannot shoot.
+  // Tank can still drive but cannot shoot.
   // Respawn is server-triggered: drive over home base RFID → server sends "command health 100".
   if (isDead) {
     // RFID scan — send event so server can respawn the tank on home base
@@ -489,14 +460,11 @@ void loop() {
       sendRfidEvent(deadUid);
     }
 
-    // Drive at full maxSpeed regardless of health scaling
+    // Drive — maxSpeed is server-controlled, no local override needed
     MePS2.loop();
     float ly = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_LY));
-    float rx = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_RX));
-    float savedMaxSpeed = currentMaxSpeed;
-    currentMaxSpeed = maxSpeed;     // dead tanks always get full speed
-    differentialDrive(-ly, rx);
-    currentMaxSpeed = savedMaxSpeed;
+    float ry = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_RY));
+    tankDrive(-ly, -ry);
 
     if (now - lastPing >= PING_INTERVAL_MS) { sendPing(); lastPing = now; }
     if (now - lastTelemetry >= TELEMETRY_INTERVAL_MS) { sendTelemetry(); lastTelemetry = now; }
@@ -517,10 +485,10 @@ void loop() {
   MePS2.loop();
 
   float ly = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_LY));
-  float rx = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_RX));
+  float ry = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_RY));
 
-  // LY = forward / backward  |  RX = turn
-  differentialDrive(-ly, rx);
+  // LY = left track  |  RY = right track
+  tankDrive(-ly, -ry);
 
   // ── Square button → fire ───────────────────────────────────────────────────
   bool squareNow = MePS2.ButtonPressed(MeJOYSTICK_SQUARE);

@@ -11,7 +11,7 @@ A differential-drive combat robot powered by MegaPi and Raspberry Pi.
 Trinity is a two-wheel differential-drive platform based on the **MegaPi** (ATmega2560) for low-level motor control and a **Raspberry Pi Zero** as the network bridge.
 
 - **Drive System:** 2WD differential (skid-steer — forward, reverse, and in-place pivot)
-- **Health mechanic:** Max motor speed scales linearly with HP — 30 % at 0 HP, 100 % at full HP
+- **Speed/health:** Fully server-controlled — firmware applies `maxSpeed` and `health` values received via commands with no local scaling
 
 ---
 
@@ -69,8 +69,10 @@ UART uses **`Serial2`** on the ATmega2560 at **115200 baud** — this is the har
 
 | Input | Axis | Action |
 |:---|:---|:---|
-| Left stick Y | `LY` | Forward / back |
-| Right stick X | `RX` | Turn left / right |
+| Left stick Y | `LY` | Left track forward / back |
+| Right stick Y | `RY` | Right track forward / back |
+
+Each stick directly controls its corresponding track. Push both sticks up to go forward, both down to reverse, opposite directions to pivot in place.
 
 ### Motor port mapping
 
@@ -87,16 +89,12 @@ Deadzone: **20 units** (joystick values below this threshold are treated as zero
 
 ### Speed limits
 
-Both limits are runtime-mutable via `command` messages. Trinity also applies a **health-based speed multiplier** on top of `maxSpeed`.
+Both limits are runtime-mutable via `command` messages from the server. The firmware applies these values directly with no local health-based scaling.
 
 | Variable | Default | Range | Description |
 |:---|:---|:---|:---|
-| `maxSpeed` | 160 | 1–255 | Motor PWM ceiling (before health scaling) |
+| `maxSpeed` | 160 | 1–255 | Motor PWM ceiling |
 | `minSpeed` | 20 | 0–255 | Motor PWM floor when moving |
-
-**Health-based speed scaling:** actual max PWM = `maxSpeed × (0.30 + health/100 × 0.70)`.  
-At full health the tank runs at 100 % of `maxSpeed`; at 0 HP it is capped at 30 %.  
-Recalculated automatically on every IR hit and every `health` or `maxSpeed` command.
 
 ### RFID reader
 
@@ -174,7 +172,7 @@ On each decoded NEC frame:
 When `health` reaches 0:
 - `isDead = true` — motors stop, all inputs ignored
 - USB serial prints: `[DEAD] Press START to respawn`
-- Pressing **START** on the PS2 controller calls `respawn()`: health and ammo reset to 100, speed cap recalculated
+- Pressing **START** on the PS2 controller calls `respawn()`: health and ammo reset to 100
 
 ### Telemetry
 
@@ -244,7 +242,7 @@ Held in memory on the Arduino. Updated at runtime via `command` messages receive
 | `ammoLevel` | 3 | 1–10 | Ammo power / damage per shot |
 | `fireSpeed` | 5 | 1–10 | Minimum ms between shots |
 | `immunable` | false | bool | Immune to IR damage |
-| `maxSpeed` | 160 | 1–255 | Motor PWM ceiling (before health scaling) |
+| `maxSpeed` | 160 | 1–255 | Motor PWM ceiling |
 | `minSpeed` | 20 | 0–255 | Motor PWM floor when moving |
 
 ### Remote commands
@@ -257,8 +255,8 @@ Send a `command` JSON to the tank's MQTT commands topic — the Raspberry Pi str
 
 Valid `param` values: `health`, `ammo`, `ammoLevel`, `fireSpeed`, `immunable`, `maxSpeed`, `minSpeed`.
 
-Values are clamped via `constrain()`. `immunable` is boolean (`0` = false, any non-zero = true).  
-`health` and `maxSpeed` commands also trigger `updateSpeedFromHealth()` to recalculate the speed cap.
+Values are clamped via `constrain()`. `immunable` is boolean (`0` = false, any non-zero = true).
+`health` commands also handle server-triggered respawn: if the tank is dead and health is restored above 0, `isDead` is cleared automatically.
 
 > **⚠️ Serial2 RX buffer — 64 bytes hard limit**  
 > The ATmega2560 hardware UART RX buffer is 64 bytes. Messages longer than 64 bytes are silently truncated when the main loop is briefly busy, corrupting the JSON. The RPi bridge always omits `timestamp` before writing to serial so every message stays within this limit. Do not add fields to serial-bound messages without checking the byte count.

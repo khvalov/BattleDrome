@@ -78,6 +78,9 @@ const game = {
   freeStates:       {},         // { tankId: 'alive'|'dead'|'immune' } — in-game state
   freeScores:       {},         // { tankId: { wins: 0, losses: 0 } }
   immunityDuration: 5,          // seconds of immunity granted after respawn / at round start
+  // ── CTF Teams specific ─────────────────────────────────────────────────────────
+  ctfStates:        {},         // { tankId: 'alive'|'dead'|'immune' } — per-tank state in CTF Teams
+  ctfWinner:        null,       // { teamId, teamName, teamColor, tankIds[] } — set when a team wins
 };
 
 let gameTimer = null;
@@ -101,6 +104,8 @@ function gameSnapshot() {
     freeStates:       { ...game.freeStates },
     freeScores:       JSON.parse(JSON.stringify(game.freeScores)),
     immunityDuration: game.immunityDuration,
+    ctfStates:        { ...game.ctfStates },
+    ctfWinner:        game.ctfWinner ? { ...game.ctfWinner } : null,
   };
 }
 
@@ -120,6 +125,22 @@ function startRound() {
     const notReady = configuredTanks.filter(id => !game.freeReady[id]);
     if (notReady.length > 0) {
       return { ok: false, reason: 'tanks_not_ready', notReady };
+    }
+  }
+
+  // CTF Teams: validate teams have at least 1 tank and a home base
+  if (game.mode === 'ctf_teams') {
+    const teamEntries = Object.entries(game.teams);
+    if (teamEntries.length < 2) {
+      return { ok: false, reason: 'need_at_least_2_teams' };
+    }
+    for (const [teamId, team] of teamEntries) {
+      if (!team.tankIds || team.tankIds.length === 0) {
+        return { ok: false, reason: 'team_needs_tank', teamId, teamName: team.name };
+      }
+      if (!team.homeUid) {
+        return { ok: false, reason: 'team_needs_base', teamId, teamName: team.name };
+      }
     }
   }
 
@@ -149,6 +170,30 @@ function startRound() {
           console.log(`[GAME] Free Play: ${tankId} start immunity ended — alive`);
         }
       }, game.immunityDuration * 1000);
+    }
+  }
+
+  // Initialise CTF Teams in-round state
+  if (game.mode === 'ctf_teams') {
+    game.ctfStates = {};
+    game.ctfWinner = null;
+    for (const [teamId, team] of Object.entries(game.teams)) {
+      game.scores[teamId] = 0;
+      for (const tankId of (team.tankIds || [])) {
+        game.ctfStates[tankId] = 'immune';
+        sendCommand(tankId, 'health', 100);
+        sendCommand(tankId, 'ammo',   100);
+        sendCommand(tankId, 'immunable', 1);
+        clearTimeout(immunityTimers[tankId]);
+        immunityTimers[tankId] = setTimeout(() => {
+          if (game.status === 'running' && game.ctfStates[tankId] === 'immune') {
+            game.ctfStates[tankId] = 'alive';
+            sendCommand(tankId, 'immunable', 0);
+            broadcastGame();
+            console.log(`[GAME] CTF Teams: ${tankId} start immunity ended — alive`);
+          }
+        }, game.immunityDuration * 1000);
+      }
     }
   }
 
@@ -183,6 +228,17 @@ function endRound(reason) {
       sendCommand(tankId, 'immunable', 0);
     }
   }
+  // CTF Teams: lift immunity and stop all tanks (set maxSpeed=0) when time is up
+  if (game.mode === 'ctf_teams') {
+    for (const [, team] of Object.entries(game.teams)) {
+      for (const tankId of (team.tankIds || [])) {
+        sendCommand(tankId, 'immunable', 0);
+        if (reason === 'time_up') {
+          sendCommand(tankId, 'maxSpeed', 0);
+        }
+      }
+    }
+  }
   game.status = 'ended';
   console.log(`[GAME] Round ended — reason: ${reason}`);
   broadcastGame('game_end', { reason });
@@ -202,6 +258,12 @@ function resetRound() {
   game.freeStates       = {};
   game.freeReady        = {};
   game.freeScores       = {};
+  game.ctfStates        = {};
+  game.ctfWinner        = null;
+  // Restore maxSpeed on all known tanks (in case it was zeroed on time_up)
+  for (const [tankId] of Object.entries(tanks)) {
+    sendCommand(tankId, 'maxSpeed', 160);
+  }
   broadcastGame();
   console.log('[GAME] Round reset');
 }
@@ -237,6 +299,29 @@ function respawnTank(tankId) {
       sendCommand(tankId, 'immunable', 0);
       broadcastGame();
       console.log(`[GAME] Free Play: ${tankId} immunity ended — alive`);
+    }
+  }, game.immunityDuration * 1000);
+}
+
+// Respawn a CTF Teams tank: restore health/ammo, grant immunity, start immunity timer.
+function respawnCtfTank(tankId) {
+  game.ctfStates[tankId] = 'immune';
+  sendCommand(tankId, 'health', 100);
+  sendCommand(tankId, 'ammo',   100);
+  sendCommand(tankId, 'immunable', 1);
+  const prev = (tanks[tankId] || {}).telemetry || {};
+  setTank(tankId, { telemetry: { ...prev, health: 100, ammo: 100, immunable: 1 } });
+
+  broadcastGame();
+  console.log(`[GAME] CTF Teams: ${tankId} respawned — immune for ${game.immunityDuration}s`);
+
+  clearTimeout(immunityTimers[tankId]);
+  immunityTimers[tankId] = setTimeout(() => {
+    if (game.ctfStates[tankId] === 'immune') {
+      game.ctfStates[tankId] = 'alive';
+      sendCommand(tankId, 'immunable', 0);
+      broadcastGame();
+      console.log(`[GAME] CTF Teams: ${tankId} immunity ended — alive`);
     }
   }, game.immunityDuration * 1000);
 }
@@ -288,24 +373,48 @@ function handleGameRfid(scannerTankId, uid) {
 }
 
 function handleCtfTeams(scannerTankId, uid) {
+  const scannerInfo = getTeamOfTank(scannerTankId);
+  if (!scannerInfo) return false; // scanner not on any team
+
+  const scannerState = game.ctfStates[scannerTankId] || 'alive';
+
   // Find which team owns this home base
   let homeTeamId = null;
+  let homeTeam   = null;
   for (const [teamId, team] of Object.entries(game.teams)) {
-    if ((team.homeUid || '').toUpperCase() === uid) { homeTeamId = teamId; break; }
+    if ((team.homeUid || '').toUpperCase() === uid) { homeTeamId = teamId; homeTeam = team; break; }
   }
   if (!homeTeamId) return false; // not a registered home base → fall through
 
-  const scannerInfo = getTeamOfTank(scannerTankId);
-  if (!scannerInfo) return true; // scanner has no team → consume event, no score
-
+  // Scanning own team's base → respawn if dead
   if (scannerInfo.teamId === homeTeamId) {
-    console.log(`[GAME] CTF Teams: ${scannerTankId} scanned own base — no capture`);
+    if (scannerState === 'dead') {
+      respawnCtfTank(scannerTankId);
+      console.log(`[GAME] CTF Teams: ${scannerTankId} respawned at own base`);
+    } else {
+      console.log(`[GAME] CTF Teams: ${scannerTankId} scanned own base — no effect`);
+    }
     return true;
   }
 
+  // Dead tanks cannot capture opponent bases
+  if (scannerState === 'dead') {
+    console.log(`[GAME] CTF Teams: ${scannerTankId} is dead — cannot capture ${homeTeam.name}'s base`);
+    return true;
+  }
+
+  // Alive/immune tank scans opponent base → instant win!
+  const winnerTeam = game.teams[scannerInfo.teamId];
+  game.ctfWinner = {
+    teamId:   scannerInfo.teamId,
+    teamName: winnerTeam.name,
+    teamColor: winnerTeam.color,
+    tankIds:  winnerTeam.tankIds || [],
+    capturedBy: scannerTankId,
+  };
   addScore(scannerInfo.teamId, 1);
-  console.log(`[GAME] CTF Teams: ${scannerInfo.teamId} captured ${homeTeamId}'s base! Score: ${game.scores[scannerInfo.teamId]}`);
-  broadcastGame();
+  console.log(`[GAME] CTF Teams: ${scannerTankId} captured ${homeTeam.name}'s base! ${winnerTeam.name} WINS!`);
+  endRound('base_captured');
   return true;
 }
 
@@ -410,11 +519,16 @@ function applyRfidAction(scannerTankId, entry) {
     case 'tank':     targetIds = [scannerTankId]; break;
     case 'others':   targetIds = allIds.filter(id => id !== scannerTankId); break;
     case 'all':      targetIds = allIds; break;
-    case 'teammate':
-      // Teams not yet implemented — applies to scanner only
-      targetIds = [scannerTankId];
-      console.log('[RFID] teammate recipient: teams not implemented, applying to scanner');
+    case 'teammate': {
+      const info = getTeamOfTank(scannerTankId);
+      if (info) {
+        targetIds = (info.team.tankIds || []).filter(id => id !== scannerTankId);
+        if (targetIds.length === 0) targetIds = [scannerTankId]; // solo team fallback
+      } else {
+        targetIds = [scannerTankId];
+      }
       break;
+    }
     default:         targetIds = [scannerTankId];
   }
 
@@ -471,6 +585,23 @@ mqttClient.on('message', (topic, raw) => {
       if (fold === shooterAddr) { shooterId = id; break; }
     }
 
+    // CTF Teams: block friendly fire — same team → ignore damage, restore health
+    if (game.mode === 'ctf_teams' && game.status === 'running' && shooterId) {
+      const victimTeam  = getTeamOfTank(tankId);
+      const shooterTeam = getTeamOfTank(shooterId);
+      if (victimTeam && shooterTeam && victimTeam.teamId === shooterTeam.teamId) {
+        console.log(`[HIT] Friendly fire blocked: ${shooterId} → ${tankId} (team ${victimTeam.team.name})`);
+        // Restore the health the firmware already subtracted locally
+        const currentHealth = (tanks[tankId] || {}).telemetry?.health ?? 100;
+        sendCommand(tankId, 'health', currentHealth);
+        // Skip all damage processing
+        setTank(tankId, patch);
+        broadcast({ type: 'update', tanks: snapshot() });
+        broadcast({ type: 'log', tankId, receivedAt: now, payload });
+        return;
+      }
+    }
+
     const currentHealth = (tanks[tankId] || {}).telemetry?.health ?? 100;
     const newHealth     = Math.max(0, currentHealth - damage);
 
@@ -498,6 +629,16 @@ mqttClient.on('message', (topic, raw) => {
           game.freeScores[shooterId].wins++;
         }
         console.log(`[GAME] Free Play: ${tankId} eliminated by ${shooterId || `0x${shooterAddr.toString(16)}`}`);
+        broadcastGame();
+      }
+    }
+
+    // CTF Teams kill tracking — dead tank must return to own base to respawn
+    if (game.mode === 'ctf_teams' && game.status === 'running' && newHealth === 0) {
+      const wasAlive = (game.ctfStates[tankId] || 'alive') !== 'dead';
+      if (wasAlive) {
+        game.ctfStates[tankId] = 'dead';
+        console.log(`[GAME] CTF Teams: ${tankId} eliminated by ${shooterId || `0x${shooterAddr.toString(16)}`} — must return to base`);
         broadcastGame();
       }
     }

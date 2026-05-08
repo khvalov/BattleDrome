@@ -73,7 +73,8 @@ Two tank firmwares live in this repo — both share the same game-state schema a
 
 **Trinity-specific:**
 - Motor port mapping: L=PORT_1, R=PORT_4
-- Health-based speed scaling: max PWM = 30 % at 0 HP → 100 % at 100 HP (`updateSpeedFromHealth()`)
+- **Tank-stick controls:** Left stick Y = left track, Right stick Y = right track (each stick directly drives its track; no mixing)
+- Speed is fully server-controlled via `maxSpeed` command — no local health-based scaling
 - No LEDs (A13/A14 are not used)
 
 **Game-state variables (set via `command` messages):**
