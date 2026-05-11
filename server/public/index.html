@@ -796,9 +796,9 @@
     #fpv-overlay.show { display:block; }
 
     /* Video fills entire screen */
-    #fpv-frame {
+    #fpv-video {
       position:absolute; inset:0; width:100%; height:100%;
-      border:none; background:#000;
+      object-fit:contain; background:#000;
     }
 
     /* HUD layer on top of video */
@@ -1328,7 +1328,7 @@
 
 <!-- ── FPV overlay ──────────────────────────────────────────────────────────── -->
 <div id="fpv-overlay">
-  <iframe id="fpv-frame" src="" allowfullscreen></iframe>
+  <video id="fpv-video" autoplay playsinline muted></video>
 
   <div id="fpv-hud">
     <!-- Vignette + scan lines for tank-cam feel -->
@@ -1596,23 +1596,62 @@ async function commitRename(id) {
 }
 function cancelRename() { renderTanks(_tanks); }
 
-// ── FPV ───────────────────────────────────────────────────────────────────────
+// ── FPV (WebRTC via WHEP) ──────────────────────────────────────────────────────
 let _fpvTankId = null;
+let _fpvPC     = null;   // RTCPeerConnection
 
-function openFpv(tankId, ip) {
+async function openFpv(tankId, ip) {
   if (!ip) return;
   _fpvTankId = tankId;
-  const url = `http://${ip}:8889/cam`;
   document.getElementById('fpv-title').textContent = `FPV — ${tankName(tankId)}`;
-  document.getElementById('fpv-frame').src = url;
   document.getElementById('fpv-overlay').classList.add('show');
-  updateFpvHud();  // initial render from current telemetry
+  updateFpvHud();
+
+  // Connect via WHEP (WebRTC HTTP Egress Protocol)
+  const whepUrl = `http://${ip}:8889/cam/whep`;
+  try {
+    const pc = new RTCPeerConnection({ iceServers: [] });
+    _fpvPC = pc;
+
+    pc.addTransceiver('video', { direction: 'recvonly' });
+    pc.addTransceiver('audio', { direction: 'recvonly' });
+
+    pc.ontrack = (ev) => {
+      const video = document.getElementById('fpv-video');
+      video.srcObject = ev.streams[0];
+    };
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+
+    // Wait for ICE gathering to complete
+    await new Promise((resolve) => {
+      if (pc.iceGatheringState === 'complete') return resolve();
+      pc.onicegatheringstatechange = () => {
+        if (pc.iceGatheringState === 'complete') resolve();
+      };
+    });
+
+    const resp = await fetch(whepUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/sdp' },
+      body: pc.localDescription.sdp,
+    });
+    if (!resp.ok) throw new Error(`WHEP ${resp.status}`);
+
+    const answerSdp = await resp.text();
+    await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+  } catch (err) {
+    console.error('[FPV] WHEP connection failed:', err);
+  }
 }
 
 function closeFpv() {
   _fpvTankId = null;
+  if (_fpvPC) { _fpvPC.close(); _fpvPC = null; }
+  const video = document.getElementById('fpv-video');
+  video.srcObject = null;
   document.getElementById('fpv-overlay').classList.remove('show');
-  document.getElementById('fpv-frame').src = '';
 }
 
 function updateFpvHud() {
