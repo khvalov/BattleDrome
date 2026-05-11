@@ -788,6 +788,41 @@
     .rfid-editor-field input { font-size: 0.72rem; }
     .rfid-editor-actions { display: flex; gap: 0.5rem; margin-top: 0.65rem; }
 
+    /* ── FPV overlay ── */
+    #fpv-overlay {
+      display:none; position:fixed; inset:0; background:rgba(0,0,0,0.92);
+      z-index:1100; flex-direction:column; align-items:center; justify-content:center;
+      gap:1rem;
+    }
+    #fpv-overlay.show { display:flex; }
+    #fpv-header {
+      display:flex; align-items:center; gap:1rem;
+      padding:0.75rem 1.5rem; width:100%; max-width:1200px;
+    }
+    #fpv-title {
+      font-size:1rem; font-weight:bold; color:#58a6ff;
+      text-transform:uppercase; letter-spacing:0.08em; flex:1;
+    }
+    #fpv-close {
+      background:none; border:1px solid #30363d; color:#8b949e;
+      border-radius:4px; padding:0.4rem 0.9rem; font-size:0.78rem;
+      cursor:pointer; font-family:inherit;
+    }
+    #fpv-close:hover { border-color:#8b949e; color:#e6edf3; }
+    #fpv-frame {
+      width:90vw; max-width:1200px; height:70vh;
+      border:1px solid #30363d; border-radius:8px;
+      background:#000;
+    }
+
+    .btn-fpv {
+      background:none; border:1px solid #58a6ff44; color:#58a6ff;
+      border-radius:4px; padding:0.2rem 0.55rem; font-size:0.68rem;
+      cursor:pointer; font-family:inherit; margin-left:auto;
+    }
+    .btn-fpv:hover { border-color:#58a6ff; background:#58a6ff22; }
+    .btn-fpv:disabled { opacity:0.3; cursor:not-allowed; pointer-events:none; }
+
     /* ── Win overlay ── */
     #win-overlay {
       display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88);
@@ -1191,6 +1226,15 @@
   </div>
 </div>
 
+<!-- ── FPV overlay ──────────────────────────────────────────────────────────── -->
+<div id="fpv-overlay">
+  <div id="fpv-header">
+    <span id="fpv-title">FPV</span>
+    <button id="fpv-close" onclick="closeFpv()">&#10005; Close</button>
+  </div>
+  <iframe id="fpv-frame" src="" frameborder="0" allowfullscreen></iframe>
+</div>
+
 <!-- ── Win overlay ───────────────────────────────────────────────────────────── -->
 <div id="win-overlay">
   <div id="win-trophy">&#127942;</div>
@@ -1356,12 +1400,14 @@ function renderTanks(tanks) {
 
     const dispName  = tank.displayName || tank.id;
     const idLabel   = tank.displayName ? `<span class="tank-id-label">(${esc(tank.id)})</span>` : '';
+    const tankIp = tank.telemetry?.ip || '';
     card.innerHTML = `
       <div class="tank-header">
         <div class="status-dot"></div>
         <span class="tank-name" id="tname-${esc(tank.id)}">${esc(dispName)}</span>
         ${idLabel}
         <button class="btn-rename" onclick="startRename('${esc(tank.id)}')">&#9998;</button>
+        <button class="btn-fpv" onclick="openFpv('${esc(tank.id)}','${esc(tankIp)}')" ${tankIp && tank.online ? '' : 'disabled'}>&#128247; FPV</button>
         <span class="tank-status-label">${tank.online ? 'ONLINE' : 'OFFLINE'}</span>
       </div>
       <div class="tank-meta">${tank.lastSeen ? `Last seen: ${timeSince(tank.lastSeen)}` : ''}</div>
@@ -1406,6 +1452,20 @@ async function commitRename(id) {
   await api('PATCH', `/api/tanks/${encodeURIComponent(id)}`, { displayName: inp.value.trim() });
 }
 function cancelRename() { renderTanks(_tanks); }
+
+// ── FPV ───────────────────────────────────────────────────────────────────────
+function openFpv(tankId, ip) {
+  if (!ip) return;
+  const url = `http://${ip}:8889/cam`;
+  document.getElementById('fpv-title').textContent = `FPV — ${tankName(tankId)}`;
+  document.getElementById('fpv-frame').src = url;
+  document.getElementById('fpv-overlay').classList.add('show');
+}
+
+function closeFpv() {
+  document.getElementById('fpv-overlay').classList.remove('show');
+  document.getElementById('fpv-frame').src = '';
+}
 
 // ── Game: mode tabs ───────────────────────────────────────────────────────────
 const MODE_DESCRIPTIONS = {
@@ -2623,8 +2683,10 @@ function appendLog({ tankId, receivedAt, payload }) {
     const dataId   = payload?.event?.data?.tankId;
     const tryIds   = [...new Set([dataId, tankId].filter(Boolean))];
     if (scannedUid) {
-      // Feed into Tag Reader page
-      appendTag(tankId, scannedUid.toUpperCase(), receivedAt);
+      // Feed into Tag Reader page (skip when any game is running)
+      if (!_gameState || _gameState.status !== 'running') {
+        appendTag(tankId, scannedUid.toUpperCase(), receivedAt);
+      }
 
       for (const cid of tryIds) {
         // Auto-fill Free Play base input

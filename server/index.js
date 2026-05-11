@@ -195,6 +195,9 @@ function startRound() {
   clearInterval(gameTimer);
   gameTimer = null;
 
+  // Reset all tanks to defaults before mode-specific setup
+  resetAllTankDefaults();
+
   // Initialise free play in-round state
   if (game.mode === 'free_play') {
     game.freeStates = {};
@@ -433,6 +436,10 @@ function endRound(reason) {
     }
   }
   game.status = 'ended';
+
+  // Reset all tanks to safe defaults so nothing stays stuck from the game
+  resetAllTankDefaults();
+
   console.log(`[GAME] Round ended — reason: ${reason}`);
   broadcastGame('game_end', { reason });
 }
@@ -468,12 +475,34 @@ function resetRound() {
     clearTimeout(speedDebounce[tankId]);
     delete speedDebounce[tankId];
   }
-  // Restore maxSpeed on all known tanks (in case it was zeroed on time_up)
-  for (const [tankId] of Object.entries(tanks)) {
-    sendCommand(tankId, 'maxSpeed', 160);
-  }
+  // Reset all tanks to defaults
+  resetAllTankDefaults();
   broadcastGame();
   console.log('[GAME] Round reset');
+}
+
+// Default values for all robot-controlled parameters.
+// Called on game start, stop, and reset so tanks never get stuck in a stale state.
+const TANK_DEFAULTS = {
+  health:    100,
+  ammo:      100,
+  maxSpeed:  160,
+  minSpeed:  0,
+  fireSpeed: 5,
+  ammoLevel: 5,
+  immunable: 0,
+};
+
+function resetTankDefaults(tankId) {
+  for (const [param, value] of Object.entries(TANK_DEFAULTS)) {
+    sendCommand(tankId, param, value);
+  }
+}
+
+function resetAllTankDefaults() {
+  for (const tankId of Object.keys(tanks)) {
+    resetTankDefaults(tankId);
+  }
 }
 
 function addScore(id, delta) {

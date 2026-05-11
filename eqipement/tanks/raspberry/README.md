@@ -94,3 +94,71 @@ mosquitto_pub -h broker.hivemq.com \
 
 Valid `param` values: `health`, `ammo`, `ammoLevel`, `fireSpeed`, `immunable`.  
 See `eqipement/README.md` for the full message spec.
+
+---
+
+## FPV Camera (mediamtx)
+
+Each tank runs a Raspberry Pi Camera module streamed via [mediamtx](https://github.com/bluenviron/mediamtx) over WebRTC. The dashboard provides an FPV button on each tank card to view the live feed.
+
+**Step 1 — Install mediamtx**
+
+Download the ARM binary for Pi Zero:
+
+```bash
+cd /home/pi
+wget https://github.com/bluenviron/mediamtx/releases/download/v1.9.0/mediamtx_v1.9.0_linux_armv6l.tar.gz
+tar xzf mediamtx_v1.9.0_linux_armv6l.tar.gz
+rm mediamtx_v1.9.0_linux_armv6l.tar.gz
+```
+
+**Step 2 — Configure mediamtx**
+
+Create or edit `/home/pi/mediamtx.yml`:
+
+```yaml
+paths:
+  cam:
+    source: rpiCamera
+    rpiCameraWidth: 640
+    rpiCameraHeight: 360
+    rpiCameraFPS: 25
+    rpiCameraBitrate: 2000000
+    rpiCameraCodec: hardwareH264
+```
+
+The WebRTC player is then available at `http://<tank-ip>:8889/cam`.
+
+**Step 3 — Create systemd service**
+
+`/etc/systemd/system/mediamtx.service`:
+
+```ini
+[Unit]
+Description=MediaMTX Camera Stream
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi
+ExecStart=/home/pi/mediamtx /home/pi/mediamtx.yml
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable mediamtx.service
+sudo systemctl start mediamtx.service
+```
+
+**Verify:**
+
+```bash
+systemctl status mediamtx.service
+# Open http://<tank-ip>:8889/cam in a browser to confirm the stream
+```

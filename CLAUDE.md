@@ -99,6 +99,10 @@ node server.js
 
 Systemd service config is in `eqipement/tanks/raspberry/README.md`. WiFi provisioning uses `wifi-connect` (checked via `nmcli`).
 
+### FPV Camera
+
+Each tank has a Raspberry Pi Camera streamed via **mediamtx** (hardware H.264, 640x360 @ 25fps, 2 Mbps). The WebRTC player is at `http://<tank-ip>:8889/cam`. The dashboard exposes an **FPV** button on each tank card that opens this stream in a fullscreen overlay. The mediamtx systemd service config is in `eqipement/tanks/raspberry/README.md`.
+
 ## Central Server
 
 ```bash
