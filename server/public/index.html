@@ -790,30 +790,130 @@
 
     /* ── FPV overlay ── */
     #fpv-overlay {
-      display:none; position:fixed; inset:0; background:rgba(0,0,0,0.92);
-      z-index:1100; flex-direction:column; align-items:center; justify-content:center;
-      gap:1rem;
+      display:none; position:fixed; inset:0; background:#000;
+      z-index:1100;
     }
-    #fpv-overlay.show { display:flex; }
-    #fpv-header {
-      display:flex; align-items:center; gap:1rem;
-      padding:0.75rem 1.5rem; width:100%; max-width:1200px;
-    }
-    #fpv-title {
-      font-size:1rem; font-weight:bold; color:#58a6ff;
-      text-transform:uppercase; letter-spacing:0.08em; flex:1;
-    }
-    #fpv-close {
-      background:none; border:1px solid #30363d; color:#8b949e;
-      border-radius:4px; padding:0.4rem 0.9rem; font-size:0.78rem;
-      cursor:pointer; font-family:inherit;
-    }
-    #fpv-close:hover { border-color:#8b949e; color:#e6edf3; }
+    #fpv-overlay.show { display:block; }
+
+    /* Video fills entire screen */
     #fpv-frame {
-      width:90vw; max-width:1200px; height:70vh;
-      border:1px solid #30363d; border-radius:8px;
-      background:#000;
+      position:absolute; inset:0; width:100%; height:100%;
+      border:none; background:#000;
     }
+
+    /* HUD layer on top of video */
+    #fpv-hud {
+      position:absolute; inset:0; pointer-events:none;
+      z-index:1; font-family:'Courier New', monospace;
+    }
+
+    /* Close button — top-right, needs pointer events */
+    #fpv-close {
+      position:absolute; top:1rem; right:1rem; z-index:2;
+      pointer-events:auto; cursor:pointer;
+      background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.2);
+      color:rgba(255,255,255,0.7); border-radius:4px;
+      padding:0.4rem 0.9rem; font-size:0.78rem; font-family:inherit;
+      backdrop-filter:blur(4px);
+    }
+    #fpv-close:hover { background:rgba(255,255,255,0.15); color:#fff; border-color:rgba(255,255,255,0.4); }
+
+    /* Tank name — top-left */
+    #fpv-title {
+      position:absolute; top:1rem; left:1.5rem;
+      font-size:0.85rem; font-weight:bold; color:rgba(0,255,100,0.8);
+      text-transform:uppercase; letter-spacing:0.12em;
+      text-shadow:0 0 8px rgba(0,255,100,0.4);
+    }
+
+    /* ── Crosshair ── */
+    #fpv-crosshair {
+      position:absolute; top:50%; left:50%;
+      transform:translate(-50%,-50%);
+      width:80px; height:80px;
+    }
+    /* Center dot */
+    #fpv-crosshair::before {
+      content:''; position:absolute;
+      top:50%; left:50%; transform:translate(-50%,-50%);
+      width:4px; height:4px; border-radius:50%;
+      background:rgba(255,60,60,0.9);
+      box-shadow:0 0 6px rgba(255,60,60,0.6);
+    }
+    /* Crosshair lines */
+    .ch-line {
+      position:absolute; background:rgba(255,60,60,0.7);
+      box-shadow:0 0 4px rgba(255,60,60,0.3);
+    }
+    .ch-top    { width:2px; height:18px; top:0;    left:50%; transform:translateX(-50%); }
+    .ch-bottom { width:2px; height:18px; bottom:0; left:50%; transform:translateX(-50%); }
+    .ch-left   { height:2px; width:18px; left:0;   top:50%; transform:translateY(-50%); }
+    .ch-right  { height:2px; width:18px; right:0;  top:50%; transform:translateY(-50%); }
+
+    /* ── HUD bars — bottom-left ── */
+    #fpv-stats {
+      position:absolute; bottom:2rem; left:2rem;
+      display:flex; flex-direction:column; gap:0.6rem;
+      min-width:200px;
+    }
+    .hud-stat {
+      display:flex; align-items:center; gap:0.6rem;
+    }
+    .hud-icon {
+      font-size:0.75rem; width:1.5rem; text-align:center;
+      color:rgba(255,255,255,0.6);
+    }
+    .hud-label {
+      font-size:0.6rem; text-transform:uppercase; letter-spacing:0.1em;
+      color:rgba(255,255,255,0.4); min-width:50px;
+    }
+    .hud-bar-track {
+      flex:1; height:8px; background:rgba(255,255,255,0.08);
+      border:1px solid rgba(255,255,255,0.12);
+      border-radius:2px; overflow:hidden; min-width:120px;
+    }
+    .hud-bar-fill {
+      height:100%; border-radius:1px;
+      transition:width 0.4s ease, background 0.4s ease;
+    }
+    .hud-bar-fill.health { background:rgba(0,255,100,0.8); box-shadow:0 0 6px rgba(0,255,100,0.3); }
+    .hud-bar-fill.health.low { background:rgba(255,60,60,0.8); box-shadow:0 0 6px rgba(255,60,60,0.3); }
+    .hud-bar-fill.health.mid { background:rgba(255,200,0,0.8); box-shadow:0 0 6px rgba(255,200,0,0.3); }
+    .hud-bar-fill.ammo   { background:rgba(255,200,0,0.8); box-shadow:0 0 6px rgba(255,200,0,0.3); }
+    .hud-bar-fill.speed  { background:rgba(80,180,255,0.8); box-shadow:0 0 6px rgba(80,180,255,0.3); }
+    .hud-value {
+      font-size:0.8rem; font-weight:bold; min-width:32px; text-align:right;
+      font-variant-numeric:tabular-nums;
+      text-shadow:0 0 6px rgba(0,0,0,0.8);
+    }
+    .hud-value.health { color:rgba(0,255,100,0.9); }
+    .hud-value.health.low { color:rgba(255,60,60,0.9); }
+    .hud-value.health.mid { color:rgba(255,200,0,0.9); }
+    .hud-value.ammo   { color:rgba(255,200,0,0.9); }
+    .hud-value.speed  { color:rgba(80,180,255,0.9); }
+
+    /* ── Vignette + scan lines ── */
+    #fpv-vignette {
+      position:absolute; inset:0;
+      background:radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.6) 100%);
+    }
+    #fpv-scanlines {
+      position:absolute; inset:0; opacity:0.04;
+      background:repeating-linear-gradient(
+        0deg, transparent, transparent 2px,
+        rgba(0,0,0,0.3) 2px, rgba(0,0,0,0.3) 4px
+      );
+    }
+
+    /* Corner brackets — tank targeting look */
+    .hud-corner {
+      position:absolute; width:40px; height:40px;
+      border-color:rgba(0,255,100,0.3); border-style:solid; border-width:0;
+    }
+    .hud-corner.tl { top:3rem; left:3rem; border-top-width:2px; border-left-width:2px; }
+    .hud-corner.tr { top:3rem; right:3rem; border-top-width:2px; border-right-width:2px; }
+    .hud-corner.bl { bottom:3rem; left:3rem; border-bottom-width:2px; border-left-width:2px; }
+    .hud-corner.br { bottom:3rem; right:3rem; border-bottom-width:2px; border-right-width:2px; }
 
     .btn-fpv {
       background:none; border:1px solid #58a6ff44; color:#58a6ff;
@@ -1228,11 +1328,54 @@
 
 <!-- ── FPV overlay ──────────────────────────────────────────────────────────── -->
 <div id="fpv-overlay">
-  <div id="fpv-header">
+  <iframe id="fpv-frame" src="" allowfullscreen></iframe>
+
+  <div id="fpv-hud">
+    <!-- Vignette + scan lines for tank-cam feel -->
+    <div id="fpv-vignette"></div>
+    <div id="fpv-scanlines"></div>
+
+    <!-- Corner brackets -->
+    <div class="hud-corner tl"></div>
+    <div class="hud-corner tr"></div>
+    <div class="hud-corner bl"></div>
+    <div class="hud-corner br"></div>
+
+    <!-- Crosshair -->
+    <div id="fpv-crosshair">
+      <div class="ch-line ch-top"></div>
+      <div class="ch-line ch-bottom"></div>
+      <div class="ch-line ch-left"></div>
+      <div class="ch-line ch-right"></div>
+    </div>
+
+    <!-- Tank name -->
     <span id="fpv-title">FPV</span>
-    <button id="fpv-close" onclick="closeFpv()">&#10005; Close</button>
+
+    <!-- HUD stats — bottom left -->
+    <div id="fpv-stats">
+      <div class="hud-stat">
+        <span class="hud-icon">+</span>
+        <span class="hud-label">Health</span>
+        <div class="hud-bar-track"><div class="hud-bar-fill health" id="fpv-health-bar" style="width:100%"></div></div>
+        <span class="hud-value health" id="fpv-health-val">100</span>
+      </div>
+      <div class="hud-stat">
+        <span class="hud-icon">&#9679;</span>
+        <span class="hud-label">Ammo</span>
+        <div class="hud-bar-track"><div class="hud-bar-fill ammo" id="fpv-ammo-bar" style="width:100%"></div></div>
+        <span class="hud-value ammo" id="fpv-ammo-val">100</span>
+      </div>
+      <div class="hud-stat">
+        <span class="hud-icon">&#9654;</span>
+        <span class="hud-label">Speed</span>
+        <div class="hud-bar-track"><div class="hud-bar-fill speed" id="fpv-speed-bar" style="width:0%"></div></div>
+        <span class="hud-value speed" id="fpv-speed-val">0</span>
+      </div>
+    </div>
   </div>
-  <iframe id="fpv-frame" src="" frameborder="0" allowfullscreen></iframe>
+
+  <button id="fpv-close" onclick="closeFpv()">&#10005; Close</button>
 </div>
 
 <!-- ── Win overlay ───────────────────────────────────────────────────────────── -->
@@ -1300,7 +1443,7 @@ function connect() {
   _ws.onmessage = ({ data }) => {
     const msg = JSON.parse(data);
     switch (msg.type) {
-      case 'update':       _tanks = msg.tanks; renderTanks(msg.tanks); break;
+      case 'update':       _tanks = msg.tanks; renderTanks(msg.tanks); updateFpvHud(); break;
       case 'log':          appendLog(msg); break;
       case 'rfid_actions': renderRfidRules(msg.actions); break;
       case 'win':          showWinOverlay(msg); break;
@@ -1454,17 +1597,52 @@ async function commitRename(id) {
 function cancelRename() { renderTanks(_tanks); }
 
 // ── FPV ───────────────────────────────────────────────────────────────────────
+let _fpvTankId = null;
+
 function openFpv(tankId, ip) {
   if (!ip) return;
+  _fpvTankId = tankId;
   const url = `http://${ip}:8889/cam`;
   document.getElementById('fpv-title').textContent = `FPV — ${tankName(tankId)}`;
   document.getElementById('fpv-frame').src = url;
   document.getElementById('fpv-overlay').classList.add('show');
+  updateFpvHud();  // initial render from current telemetry
 }
 
 function closeFpv() {
+  _fpvTankId = null;
   document.getElementById('fpv-overlay').classList.remove('show');
   document.getElementById('fpv-frame').src = '';
+}
+
+function updateFpvHud() {
+  if (!_fpvTankId) return;
+  const tank = _tanks.find(t => t.id === _fpvTankId);
+  const tel  = tank?.telemetry;
+  if (!tel) return;
+
+  const health   = tel.health ?? 100;
+  const ammo     = tel.ammo ?? 100;
+  const speed    = tel.speed ?? 0;
+  const maxSpeed = tel.maxSpeed ?? 160;
+
+  // Health bar + color coding
+  const hBar = document.getElementById('fpv-health-bar');
+  const hVal = document.getElementById('fpv-health-val');
+  hBar.style.width = `${health}%`;
+  hVal.textContent  = health;
+  const hClass = health <= 25 ? 'low' : health <= 50 ? 'mid' : '';
+  hBar.className = `hud-bar-fill health ${hClass}`;
+  hVal.className = `hud-value health ${hClass}`;
+
+  // Ammo bar
+  document.getElementById('fpv-ammo-bar').style.width = `${ammo}%`;
+  document.getElementById('fpv-ammo-val').textContent  = ammo;
+
+  // Speed bar
+  const speedPct = maxSpeed > 0 ? Math.round(Math.min(100, speed / maxSpeed * 100)) : 0;
+  document.getElementById('fpv-speed-bar').style.width = `${speedPct}%`;
+  document.getElementById('fpv-speed-val').textContent  = speed;
 }
 
 // ── Game: mode tabs ───────────────────────────────────────────────────────────
