@@ -923,6 +923,58 @@
     .btn-fpv:hover { border-color:#58a6ff; background:#58a6ff22; }
     .btn-fpv:disabled { opacity:0.3; cursor:not-allowed; pointer-events:none; }
 
+    /* ── FPV loading spinner ── */
+    #fpv-spinner {
+      display:none; position:absolute; top:50%; left:50%;
+      transform:translate(-50%,-50%); z-index:3;
+      text-align:center; color:rgba(0,255,100,0.8);
+      font-family:'Courier New',monospace;
+    }
+    #fpv-spinner.show { display:block; }
+    #fpv-spinner .spinner-ring {
+      width:64px; height:64px; margin:0 auto 1rem;
+      border:3px solid rgba(0,255,100,0.15);
+      border-top-color:rgba(0,255,100,0.8);
+      border-radius:50%;
+      animation:fpv-spin 0.9s linear infinite;
+    }
+    #fpv-spinner .spinner-text {
+      font-size:0.75rem; text-transform:uppercase; letter-spacing:0.15em;
+      opacity:0.7;
+    }
+    @keyframes fpv-spin { to { transform:rotate(360deg); } }
+
+    /* ── FPV shoot flash + shake ── */
+    @keyframes fpv-shake {
+      0%,100% { transform:translate(0,0); }
+      15%     { transform:translate(-3px,-2px); }
+      35%     { transform:translate(4px,1px); }
+      55%     { transform:translate(-2px,3px); }
+      75%     { transform:translate(3px,-1px); }
+    }
+    #fpv-overlay.shoot-shake #fpv-video {
+      animation:fpv-shake 0.15s ease-out;
+    }
+    #fpv-shoot-flash {
+      display:none; position:absolute; inset:0; z-index:4;
+      background:rgba(255,200,60,0.25);
+      pointer-events:none;
+    }
+    #fpv-shoot-flash.show { display:block; }
+
+    /* ── FPV damage red flash ── */
+    #fpv-damage-flash {
+      display:none; position:absolute; inset:0; z-index:4;
+      background:radial-gradient(ellipse at center, transparent 30%, rgba(255,0,0,0.55) 100%);
+      pointer-events:none;
+      animation:fpv-damage-fade 0.4s ease-out forwards;
+    }
+    #fpv-damage-flash.show { display:block; }
+    @keyframes fpv-damage-fade {
+      0%   { opacity:1; }
+      100% { opacity:0; }
+    }
+
     /* ── Win overlay ── */
     #win-overlay {
       display:none; position:fixed; inset:0; background:rgba(0,0,0,0.88);
@@ -1330,6 +1382,17 @@
 <div id="fpv-overlay">
   <video id="fpv-video" autoplay playsinline muted></video>
 
+  <!-- Loading spinner (shown until video feed arrives) -->
+  <div id="fpv-spinner">
+    <div class="spinner-ring"></div>
+    <div class="spinner-text">Connecting feed&hellip;</div>
+  </div>
+
+  <!-- Shoot flash overlay -->
+  <div id="fpv-shoot-flash"></div>
+  <!-- Damage flash overlay -->
+  <div id="fpv-damage-flash"></div>
+
   <div id="fpv-hud">
     <!-- Vignette + scan lines for tank-cam feel -->
     <div id="fpv-vignette"></div>
@@ -1599,12 +1662,77 @@ function cancelRename() { renderTanks(_tanks); }
 // ── FPV (WebRTC via WHEP) ──────────────────────────────────────────────────────
 let _fpvTankId = null;
 let _fpvPC     = null;   // RTCPeerConnection
+let _fpvAudioCtx = null; // lazy AudioContext for FPV sound effects
+
+function _fpvAudio() {
+  if (!_fpvAudioCtx) _fpvAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return _fpvAudioCtx;
+}
+
+function fpvShootEffect() {
+  // Visual: yellow flash + camera shake
+  const flash = document.getElementById('fpv-shoot-flash');
+  flash.classList.add('show');
+  const overlay = document.getElementById('fpv-overlay');
+  overlay.classList.add('shoot-shake');
+  setTimeout(() => { flash.classList.remove('show'); overlay.classList.remove('shoot-shake'); }, 160);
+
+  // Audio: short punchy "pew" via oscillator
+  try {
+    const ctx = _fpvAudio();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(600, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(80, ctx.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.35, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + 0.15);
+  } catch (_) { /* audio not available */ }
+}
+
+function fpvDamageEffect() {
+  // Visual: red gradient flash from edges
+  const flash = document.getElementById('fpv-damage-flash');
+  flash.classList.remove('show');
+  void flash.offsetWidth; // reflow to restart animation
+  flash.classList.add('show');
+  setTimeout(() => flash.classList.remove('show'), 420);
+
+  // Audio: low thud / impact sound
+  try {
+    const ctx = _fpvAudio();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(120, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(30, ctx.currentTime + 0.2);
+    gain.gain.setValueAtTime(0.5, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.25);
+    osc.connect(gain).connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + 0.25);
+    // Add noise burst for impact texture
+    const bufSize = ctx.sampleRate * 0.08;
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / bufSize);
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    const ng = ctx.createGain();
+    ng.gain.setValueAtTime(0.3, ctx.currentTime);
+    ng.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+    noise.connect(ng).connect(ctx.destination);
+    noise.start(); noise.stop(ctx.currentTime + 0.1);
+  } catch (_) { /* audio not available */ }
+}
 
 async function openFpv(tankId, ip) {
   if (!ip) return;
   _fpvTankId = tankId;
   document.getElementById('fpv-title').textContent = `FPV — ${tankName(tankId)}`;
   document.getElementById('fpv-overlay').classList.add('show');
+  document.getElementById('fpv-spinner').classList.add('show');
   updateFpvHud();
 
   // Connect via WHEP (WebRTC HTTP Egress Protocol)
@@ -1619,6 +1747,11 @@ async function openFpv(tankId, ip) {
     pc.ontrack = (ev) => {
       const video = document.getElementById('fpv-video');
       video.srcObject = ev.streams[0];
+      // Hide spinner once video actually starts playing
+      video.onplaying = () => {
+        document.getElementById('fpv-spinner').classList.remove('show');
+        video.onplaying = null;
+      };
     };
 
     const offer = await pc.createOffer();
@@ -1652,6 +1785,7 @@ function closeFpv() {
   const video = document.getElementById('fpv-video');
   video.srcObject = null;
   document.getElementById('fpv-overlay').classList.remove('show');
+  document.getElementById('fpv-spinner').classList.remove('show');
 }
 
 function updateFpvHud() {
@@ -2888,6 +3022,12 @@ function refreshLogTankFilter() {
 function appendLog({ tankId, receivedAt, payload }) {
   const type = payload?.event?.type || 'unknown';
   const ts   = new Date(receivedAt).toISOString().replace('T', ' ').slice(0, -1) + 'Z';
+
+  // ── FPV audio-visual effects ────────────────────────────────────────────────
+  if (_fpvTankId) {
+    if (type === 'fire' && tankId === _fpvTankId) fpvShootEffect();
+    if (type === 'hit'  && tankId === _fpvTankId) fpvDamageEffect();
+  }
 
   // ── Auto-fill Free Play home-base RFID input ──────────────────────────────
   // When a tank scans its RFID tag the server broadcasts update then log.

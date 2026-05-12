@@ -103,6 +103,11 @@ Systemd service config is in `eqipement/tanks/raspberry/README.md`. WiFi provisi
 
 Each tank has a Raspberry Pi Camera streamed via **mediamtx** (hardware H.264, 640x360 @ 25fps, 2 Mbps). The WebRTC player is at `http://<tank-ip>:8889/cam`. The dashboard exposes an **FPV** button on each tank card that opens this stream in a fullscreen overlay. The mediamtx systemd service config is in `eqipement/tanks/raspberry/README.md`.
 
+**FPV audio-visual effects (all client-side, no external assets):**
+- **Loading spinner** — green spinning ring with "Connecting feed..." text shown on FPV open; hides automatically when the video `onplaying` event fires.
+- **Shoot effect** — triggered on `fire` log events from the viewed tank. Brief yellow flash overlay + CSS shake animation (150 ms) + synthesized "pew" sound (sawtooth 600→80 Hz via Web Audio API).
+- **Damage effect** — triggered on `hit` log events for the viewed tank. Red radial gradient flash (transparent center → red edges) with 400 ms fade-out + low impact thud (sine 120→30 Hz + noise burst via Web Audio API).
+
 ## Central Server
 
 ```bash
