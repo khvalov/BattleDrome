@@ -36,12 +36,12 @@ const int SIGN_R   = +1;
 const int SIGN_AUX = -1;
 
 // Track speed (joystick driven)
-int maxSpeed = 200;  // max PWM — overridable via RFID/command
+int maxSpeed = 160;  // max PWM — overridable via RFID/command
 int minSpeed = 20;   // minimum PWM when moving — overridable via RFID/command
 const int DEADZONE = 20;
 
 // Aux motor speed (D-pad driven) — fixed, not affected by maxSpeed
-const int AUX_SPEED = 20;
+const int AUX_SPEED = 30;
 
 // ── IR transmitter ─────────────────────────────────────────────────────────────
 const uint8_t IR_PIN = A12;
@@ -54,8 +54,9 @@ uint8_t       activeRxPin  = IR_RX_PIN_1;
 unsigned long lastRxSwitch = 0;
 
 // ── Health LEDs ────────────────────────────────────────────────────────────────
-MeRGBLed led1;  // A14
-MeRGBLed led2;  // A13
+MeRGBLed led1;     // A14 — 2x2 indicator
+MeRGBLed led2;     // A13 — 2x2 indicator
+MeRGBLed matrix;   // A9  — 4x4 alive/dead matrix (16 LEDs, green=alive, red=dead)
 
 bool rpiConnected = false;
 
@@ -81,6 +82,7 @@ void respawn() {
   ammo      = 100;
   isDead    = false;
   updateHealthLed();
+  setMatrixAlive();
   Serial.println(F("[RESPAWN] Tank back in game!"));
 }
 
@@ -243,6 +245,7 @@ void handleIRReceive() {
 
             if (health == 0 && prev > 0) {
               isDead = true;
+              setMatrixDead();
               Serial.println(F("[DEAD] Drive to home base to respawn"));
             }
           } else if (!isDead) {
@@ -356,6 +359,18 @@ void setAllLeds(uint8_t r, uint8_t g, uint8_t b) {
   led2.setColor(r, g, b); led2.show();
 }
 
+// 4x4 matrix on A9 — green = alive, red = dead.
+// setColor(0, r, g, b) addresses all LEDs in the strip at once.
+void setMatrixAlive() {
+  matrix.setColor(0, 0, 180, 0);   // all 16 LEDs green
+  matrix.show();
+}
+
+void setMatrixDead() {
+  matrix.setColor(0, 180, 0, 0);   // all 16 LEDs red
+  matrix.show();
+}
+
 void updateHealthLed() {
   if (!rpiConnected) return;
   if      (health > 50) setAllLeds(0,   180,   0);
@@ -403,6 +418,7 @@ void handleSerialLine(const String& line) {
       health = constrain(value, 0, 100);
       if (isDead && health > 0) {
         isDead = false;
+        setMatrixAlive();
         Serial.println(F("[RESPAWN] Server restored health — back in game!"));
       }
       if      (health < prev) startBlink(180, 0,   0);
@@ -458,6 +474,10 @@ void setup() {
   led1.setpin(A14); led1.setNumber(4);
   led2.setpin(A13); led2.setNumber(4);
   setAllLeds(180, 140, 0);
+
+  // 4x4 alive/dead matrix on A9 — start green (alive)
+  matrix.setpin(A9); matrix.setNumber(16);
+  setMatrixAlive();
 
   SPI.begin();
   rfid.PCD_Init();
