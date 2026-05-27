@@ -1,9 +1,9 @@
 #include <Arduino.h>
+#include <SoftwareSerial.h>  // required so the IDE links SoftwareSerial (used internally by MePS2)
 #include <Wire.h>
-#include <SoftwareSerial.h>
 #include <SPI.h>
 #include <MFRC522.h>
-#include <MeMegaPi.h>   // includes MeRGBLed — no extra #include needed
+#include <MeMegaPi.h>   // includes MeRGBLed and MeEncoderOnBoard
 #include <MePS2.h>
 // Force IRremote onto Timer4 (16-bit, pins 6/7/8).
 // Timer1 & Timer2 are claimed by MeMegaPi motor PWM (TCCR1/TCCR2 in setup()).
@@ -17,49 +17,43 @@
 const char TANK_ID[]   = "BOOZY1";   // Unique identifier, up to 6 characters
 const char TANK_TYPE[] = "boozy";
 
-// ── Motor port mapping ─────────────────────────────────────────────────────────
-// PORT_12 = Front-Left  | PORT_4  = Front-Right
-// PORT_9  = Rear-Left   | PORT_1  = Rear-Right
-MeMegaPiDCMotor portFL(PORT_12);
-MeMegaPiDCMotor portFR(PORT_4);
-MeMegaPiDCMotor portRL(PORT_9);
-MeMegaPiDCMotor portRR(PORT_1);
+// ── Motor slot mapping ─────────────────────────────────────────────────────────
+// 3 encoder motors on MegaPi onboard encoder slots:
+//   SLOT1 = LEFT track   (joystick: left  stick Y)
+//   SLOT4 = RIGHT track  (joystick: right stick Y)
+//   SLOT2 = AUX motor    (D-pad: RIGHT=forward@50, LEFT=backward@50)
+// SLOT3 is unused.
+MeEncoderOnBoard motorL(SLOT1);
+MeEncoderOnBoard motorR(SLOT4);
+MeEncoderOnBoard motorAux(SLOT2);
 
 MePS2 MePS2(PORT_15);
 
-// Calibration per motor: +1 normal, -1 reversed
-const int SIGN_FL = +1;
-const int SIGN_FR = -1;
-const int SIGN_RL = -1;
-const int SIGN_RR = +1;
+// Calibration per motor: +1 normal, -1 reversed.
+// Flip these if a stick/button moves a motor the wrong way.
+const int SIGN_L   = +1;
+const int SIGN_R   = +1;
+const int SIGN_AUX = -1;
 
-int maxSpeed = 160;  // max PWM — overridable via RFID/command
+// Track speed (joystick driven)
+int maxSpeed = 200;  // max PWM — overridable via RFID/command
 int minSpeed = 20;   // minimum PWM when moving — overridable via RFID/command
 const int DEADZONE = 20;
 
+// Aux motor speed (D-pad driven) — fixed, not affected by maxSpeed
+const int AUX_SPEED = 20;
+
 // ── IR transmitter ─────────────────────────────────────────────────────────────
-// NEC protocol software carrier via busy-wait — no IRremote sender needed.
-// addr = XOR-fold of TANK_ID bytes; cmd = ammoLevel (damage for receiver).
-// IrReceiver.stop() / IrReceiver.start() wrap every transmission so the timer
-// ISR does not capture the outgoing burst as an incoming signal.
-const uint8_t IR_PIN = A12;  // = pin 66 on ATmega2560
+const uint8_t IR_PIN = A12;
 
 // ── IR receivers (dual, time-multiplexed) ─────────────────────────────────────
-// A11 = pin 65, A10 = pin 64.  IRremote uses a timer ISR to sample the active
-// pin.  We swap every IR_SWITCH_MS ms so both receivers get coverage.
-// A full NEC frame is ~68 ms — switch interval must be longer than that so
-// IrReceiver.begin() (which resets the decoder) never fires mid-frame.
-const uint8_t IR_RX_PIN_1 = A11;   // first receiver  (= pin 65)
-const uint8_t IR_RX_PIN_2 = A10;   // second receiver (= pin 64)
-const unsigned long IR_SWITCH_MS = 200;  // > 68 ms NEC frame; was 50 (too short)
+const uint8_t IR_RX_PIN_1 = A11;
+const uint8_t IR_RX_PIN_2 = A10;
+const unsigned long IR_SWITCH_MS = 200;
 uint8_t       activeRxPin  = IR_RX_PIN_1;
 unsigned long lastRxSwitch = 0;
 
-// ── Health LEDs (MeRGBLed / WS2812 2×2, pins A14 and A13) ───────────────────
-// Both LEDs mirror the same colour.
-// Boot:          yellow  (waiting for RPi)
-// RPi connected: switches to health-based colour
-// health > 50 → green | 5–50 → yellow | < 5 → red
+// ── Health LEDs ────────────────────────────────────────────────────────────────
 MeRGBLed led1;  // A14
 MeRGBLed led2;  // A13
 
@@ -67,22 +61,20 @@ bool rpiConnected = false;
 
 // ── RFID reader ────────────────────────────────────────────────────────────────
 const uint8_t RST_PIN = 30;
-const uint8_t SS_PIN  = A6;  // = pin 60 on ATmega2560; not present in any MeMegaPi port table
-MFRC522 rfid(SS_PIN, RST_PIN);  // Uses SPI: MOSI=51, MISO=50, SCK=52
+const uint8_t SS_PIN  = A6;
+MFRC522 rfid(SS_PIN, RST_PIN);
 
-const unsigned long RFID_COOLDOWN_MS = 5000;  // min ms between same-card events
+const unsigned long RFID_COOLDOWN_MS = 5000;
 String        lastRfidUid  = "";
 unsigned long lastRfidTime = 0;
 
 // ── Game state ─────────────────────────────────────────────────────────────────
 int  health    = 100;
 int  ammo      = 100;
-int  ammoLevel = 1;    // 1–10
-int  fireSpeed = 1;    // 1–10: minimum ms between shots
+int  ammoLevel = 1;
+int  fireSpeed = 1;
 bool immunable = false;
-
-// ── Death / respawn ────────────────────────────────────────────────────────────
-bool isDead = false;
+bool isDead    = false;
 
 void respawn() {
   health    = 100;
@@ -93,15 +85,11 @@ void respawn() {
 }
 
 // ── Speed tracking ─────────────────────────────────────────────────────────────
-float speedFL = 0, speedFR = 0, speedRL = 0, speedRR = 0;
+float speedL = 0, speedR = 0;
 
-// ── Telemetry timing ───────────────────────────────────────────────────────────
+// ── Timing ─────────────────────────────────────────────────────────────────────
 const unsigned long TELEMETRY_INTERVAL_MS = 500;
 unsigned long lastTelemetry = 0;
-
-// ── RPi connectivity ping ──────────────────────────────────────────────────────
-// Arduino sends a ping every PING_INTERVAL_MS; RPi replies with pong.
-// On first pong, rpiConnected becomes true and LEDs switch to health mode.
 const unsigned long PING_INTERVAL_MS = 5000;
 unsigned long lastPing = 0;
 
@@ -109,71 +97,74 @@ unsigned long lastPing = 0;
 unsigned long lastFireTime   = 0;
 bool          squarePrevious = false;
 
-// ── LED blink state ────────────────────────────────────────────────────────────
-// Non-blocking: driven by updateBlink() in loop().
-// 2 blinks = 4 half-periods (on→off→on→off); after done, restores health colour.
+// ── LED blink ──────────────────────────────────────────────────────────────────
 const unsigned long BLINK_INTERVAL_MS = 100;
-uint8_t       blinkSteps = 0;       // remaining half-periods; 0 = idle
+uint8_t       blinkSteps = 0;
 uint8_t       blinkR, blinkG, blinkB;
 unsigned long blinkLast  = 0;
 
-// ── Command buffer (Serial2 ← RPi) ────────────────────────────────────────────
+// ── Command buffer ─────────────────────────────────────────────────────────────
 String cmdBuffer = "";
+
+// ── Encoder ISRs ───────────────────────────────────────────────────────────────
+// Required by MeEncoderOnBoard. We use PWM-only control, but the library
+// still expects these to be attached.
+void isr_process_encoderL(void) {
+  if (digitalRead(motorL.getPortB()) == 0) motorL.pulsePosMinus();
+  else motorL.pulsePosPlus();
+}
+void isr_process_encoderR(void) {
+  if (digitalRead(motorR.getPortB()) == 0) motorR.pulsePosMinus();
+  else motorR.pulsePosPlus();
+}
+void isr_process_encoderAux(void) {
+  if (digitalRead(motorAux.getPortB()) == 0) motorAux.pulsePosMinus();
+  else motorAux.pulsePosPlus();
+}
 
 // ── Drive ──────────────────────────────────────────────────────────────────────
 void stopAll() {
-  portFL.run(0); portFR.run(0);
-  portRL.run(0); portRR.run(0);
+  motorL.setMotorPwm(0);
+  motorR.setMotorPwm(0);
+  motorAux.setMotorPwm(0);
 }
 
 float applyDeadzone(float v) {
   return (abs(v) < DEADZONE) ? 0 : v;
 }
 
-// Enforce minSpeed floor: if the motor is asked to move at all,
-// ensure its absolute PWM is at least minSpeed.
 float applyMinSpd(float v) {
   if (v >  0.5f) return max(v, (float)minSpeed);
   if (v < -0.5f) return min(v, -(float)minSpeed);
   return 0;
 }
 
-void mecanumDrive(float lx, float ly, float rx) {
-  float frontLeft  = ly +  lx +  rx;
-  float frontRight = ly + -lx + -rx;
-  float rearLeft   = ly + -lx +  rx;
-  float rearRight  = ly +  lx + -rx;
+// Tank drive: left stick Y → left track, right stick Y → right track.
+void tankDrive(float leftIn, float rightIn) {
+  float left  = constrain(leftIn,  -(float)maxSpeed, (float)maxSpeed);
+  float right = constrain(rightIn, -(float)maxSpeed, (float)maxSpeed);
 
-  // Scale down to maxSpeed
-  float maxVal = max(max(abs(frontLeft), abs(frontRight)),
-                     max(abs(rearLeft),  abs(rearRight)));
-  if (maxVal > maxSpeed) {
-    float scale = (float)maxSpeed / maxVal;
-    frontLeft  *= scale; frontRight *= scale;
-    rearLeft   *= scale; rearRight  *= scale;
-  }
+  left  = applyMinSpd(left);
+  right = applyMinSpd(right);
 
-  // Raise up to minSpeed (only for non-zero wheels)
-  frontLeft  = applyMinSpd(frontLeft);
-  frontRight = applyMinSpd(frontRight);
-  rearLeft   = applyMinSpd(rearLeft);
-  rearRight  = applyMinSpd(rearRight);
+  motorL.setMotorPwm(SIGN_L * (int)left);
+  motorR.setMotorPwm(SIGN_R * (int)right);
 
-  portFL.run(SIGN_FL * frontLeft);
-  portFR.run(SIGN_FR * frontRight);
-  portRL.run(SIGN_RL * rearLeft);
-  portRR.run(SIGN_RR * rearRight);
+  speedL = abs(left);
+  speedR = abs(right);
+}
 
-  speedFL = abs(frontLeft);
-  speedFR = abs(frontRight);
-  speedRL = abs(rearLeft);
-  speedRR = abs(rearRight);
+// Aux motor: D-pad right = forward at AUX_SPEED, left = backward, neither = stop.
+void auxDrive() {
+  bool rightHeld = MePS2.ButtonPressed(MeJOYSTICK_RIGHT);
+  bool leftHeld  = MePS2.ButtonPressed(MeJOYSTICK_LEFT);
+
+  if      (rightHeld) motorAux.setMotorPwm(SIGN_AUX *  AUX_SPEED);
+  else if (leftHeld)  motorAux.setMotorPwm(SIGN_AUX * -AUX_SPEED);
+  else                motorAux.setMotorPwm(0);
 }
 
 // ── IR blaster — NEC protocol ──────────────────────────────────────────────────
-// Carrier ~38 kHz via software toggle (11 µs high + 11 µs low ≈ 45 kHz;
-// most IR receivers accept 36–40 kHz, so this works in practice).
-
 void markIR(uint16_t us) {
   unsigned long t = micros();
   while ((micros() - t) < us) {
@@ -189,35 +180,30 @@ void spaceIR(uint16_t us) {
   delayMicroseconds(us);
 }
 
-// Sends one 32-bit NEC frame: leader + 32 bits LSB-first + stop pulse.
-// addr    — 8-bit sender address (XOR-fold of TANK_ID)
-// cmd     — 8-bit command (ammoLevel here)
 void sendNEC(uint8_t addr, uint8_t cmd) {
   uint32_t data = ((uint32_t)addr)              |
                   ((uint32_t)(addr ^ 0xFF) << 8) |
                   ((uint32_t)cmd           << 16)|
                   ((uint32_t)(cmd  ^ 0xFF) << 24);
-  markIR(9000);   // 9 ms leader mark
-  spaceIR(4500);  // 4.5 ms leader space
+  markIR(9000);
+  spaceIR(4500);
   for (int i = 0; i < 32; i++) {
     markIR(560);
     spaceIR(((data >> i) & 1) ? 1690 : 560);
   }
-  markIR(560);    // stop bit
+  markIR(560);
 }
 
 void fireIR() {
-  // Derive a stable 8-bit address from TANK_ID (XOR of each ASCII byte).
   uint8_t addr = 0;
   for (uint8_t i = 0; TANK_ID[i]; i++) addr ^= (uint8_t)TANK_ID[i];
 
-  // Stop IRremote's timer ISR so it doesn't capture our own outgoing burst
   IrReceiver.stop();
   sendNEC(addr, (uint8_t)ammoLevel);
-  IrReceiver.start();   // resume on the currently active pin
+  IrReceiver.start();
 }
 
-// ── IR receivers — dual, time-multiplexed ─────────────────────────────────────
+// ── IR receivers ──────────────────────────────────────────────────────────────
 void switchIRReceiver() {
   unsigned long now = millis();
   if (now - lastRxSwitch < IR_SWITCH_MS) return;
@@ -227,24 +213,18 @@ void switchIRReceiver() {
   IrReceiver.begin(activeRxPin, DISABLE_LED_FEEDBACK);
 }
 
-// Decode incoming NEC frame and apply damage.
-// NEC packet: addr | (~addr)<<8 | cmd<<16 | (~cmd)<<24
-// addr = attacker's XOR-folded TANK_ID  |  cmd = attacker's ammoLevel (damage).
-// Validates both checksum pairs so random IR noise is rejected.
 void handleIRReceive() {
   if (IrReceiver.decode()) {
     uint32_t raw = IrReceiver.decodedIRData.decodedRawData;
 
-    // Reject repeat codes and zeroed frames
     if (raw != 0 && raw != 0xFFFFFFFF) {
       uint8_t addr  =  raw        & 0xFF;
       uint8_t addrN = (raw >>  8) & 0xFF;
       uint8_t cmd   = (raw >> 16) & 0xFF;
       uint8_t cmdN  = (raw >> 24) & 0xFF;
 
-      // Valid NEC: addr XOR ~addr == 0xFF, same for cmd
       if ((uint8_t)(addr ^ addrN) == 0xFF && (uint8_t)(cmd ^ cmdN) == 0xFF) {
-        int damage = (int)cmd;   // ammoLevel sent by the attacker
+        int damage = (int)cmd;
 
         if (damage > 0 && damage <= 10) {
           if (!immunable && !isDead) {
@@ -257,8 +237,8 @@ void handleIRReceive() {
             Serial.print(F(" -")); Serial.print(damage);
             Serial.print(F(" HP | Health: ")); Serial.println(health);
 
-            sendHitEvent(addr, damage);   // notify server → server deducts HP
-            startBlink(180, 0, 0);        // red blink on hit
+            sendHitEvent(addr, damage);
+            startBlink(180, 0, 0);
             updateHealthLed();
 
             if (health == 0 && prev > 0) {
@@ -279,7 +259,6 @@ void handleIRReceive() {
 }
 
 // ── RFID ───────────────────────────────────────────────────────────────────────
-// Returns uppercase hex UID string, or "" if no new card / same card too soon.
 String readRfidUid(unsigned long now) {
   if (!rfid.PICC_IsNewCardPresent() || !rfid.PICC_ReadCardSerial()) return "";
 
@@ -293,7 +272,6 @@ String readRfidUid(unsigned long now) {
   rfid.PICC_HaltA();
   rfid.PCD_StopCrypto1();
 
-  // Debounce: skip same card within cooldown window
   if (uid == lastRfidUid && (now - lastRfidTime) < RFID_COOLDOWN_MS) return "";
 
   lastRfidUid  = uid;
@@ -301,8 +279,7 @@ String readRfidUid(unsigned long now) {
   return uid;
 }
 
-// ── Ping (connectivity poll) ───────────────────────────────────────────────────
-// Minimal fixed-size string — no ArduinoJson overhead needed.
+// ── RPi events ─────────────────────────────────────────────────────────────────
 void sendPing() {
   Serial2.print(F("{\"event\":{\"type\":\"system\",\"action\":\"ping\"}}\r\n"));
 }
@@ -316,14 +293,12 @@ void sendRfidEvent(const String& uid) {
   data["tankId"]   = TANK_ID;
   data["tankType"] = TANK_TYPE;
   data["uid"]      = uid;
-
   serializeJson(doc, Serial2);
   Serial2.print("\r\n");
 }
 
-// ── Telemetry ──────────────────────────────────────────────────────────────────
 void sendTelemetry() {
-  int avgSpeed = (int)((speedFL + speedFR + speedRL + speedRR) / 4.0f);
+  int avgSpeed = (int)((speedL + speedR) / 2.0f);
 
   StaticJsonDocument<384> doc;
   doc["timestamp"] = millis() / 1000;
@@ -340,16 +315,10 @@ void sendTelemetry() {
   data["immunable"] = immunable;
   data["maxSpeed"]  = maxSpeed;
   data["minSpeed"]  = minSpeed;
-
   serializeJson(doc, Serial2);
   Serial2.print("\r\n");
 }
 
-// Hit event: sent immediately when an incoming IR frame is decoded and damage is applied.
-// receiverId  = this tank (who got hit)
-// shooterAddr = 8-bit addr from the NEC frame (XOR-fold of attacker's TANK_ID)
-// damage      = cmd byte from the NEC frame (attacker's ammoLevel)
-// health      = remaining health after the hit
 void sendHitEvent(uint8_t shooterAddr, int damage) {
   StaticJsonDocument<256> doc;
   doc["timestamp"] = millis() / 1000;
@@ -362,12 +331,10 @@ void sendHitEvent(uint8_t shooterAddr, int damage) {
   data["shooterAddr"] = shooterAddr;
   data["damage"]      = damage;
   data["health"]      = health;
-
   serializeJson(doc, Serial2);
   Serial2.print("\r\n");
 }
 
-// Fire event: sent immediately on each shot
 void sendFireEvent() {
   StaticJsonDocument<200> doc;
   doc["timestamp"] = millis() / 1000;
@@ -379,7 +346,6 @@ void sendFireEvent() {
   data["senderId"]  = TANK_ID;
   data["ammoLevel"] = ammoLevel;
   data["ammo"]      = ammo;
-
   serializeJson(doc, Serial2);
   Serial2.print("\r\n");
 }
@@ -390,22 +356,17 @@ void setAllLeds(uint8_t r, uint8_t g, uint8_t b) {
   led2.setColor(r, g, b); led2.show();
 }
 
-// Called on every health update and on RPi connect.
-// No-op until rpiConnected — startup colour is handled in setup().
 void updateHealthLed() {
   if (!rpiConnected) return;
-  if      (health > 50) setAllLeds(0,   180,   0);  // green
-  else if (health >= 5) setAllLeds(180, 140,   0);  // yellow
-  else                  setAllLeds(180,   0,   0);  // red
+  if      (health > 50) setAllLeds(0,   180,   0);
+  else if (health >= 5) setAllLeds(180, 140,   0);
+  else                  setAllLeds(180,   0,   0);
 }
 
-// ── LED blink ──────────────────────────────────────────────────────────────────
-// Kick off a 2-blink sequence in the chosen colour.
-// updateBlink() must be called every loop() tick to advance the animation.
 void startBlink(uint8_t r, uint8_t g, uint8_t b) {
   blinkR = r; blinkG = g; blinkB = b;
-  blinkSteps = 4;   // 4 half-periods = 2 full blinks
-  blinkLast  = millis() - BLINK_INTERVAL_MS;  // fire first step immediately
+  blinkSteps = 4;
+  blinkLast  = millis() - BLINK_INTERVAL_MS;
 }
 
 void updateBlink(unsigned long now) {
@@ -413,15 +374,14 @@ void updateBlink(unsigned long now) {
   if (now - blinkLast < BLINK_INTERVAL_MS) return;
   blinkLast = now;
 
-  // Odd remaining steps → colour on; even → off
   if (blinkSteps % 2 == 0) setAllLeds(0, 0, 0);
   else                      setAllLeds(blinkR, blinkG, blinkB);
 
   blinkSteps--;
-  if (blinkSteps == 0) updateHealthLed();  // restore correct health colour when done
+  if (blinkSteps == 0) updateHealthLed();
 }
 
-// ── Serial handler (commands + system events from RPi) ────────────────────────
+// ── Serial handler ────────────────────────────────────────────────────────────
 void handleSerialLine(const String& line) {
   StaticJsonDocument<256> doc;
   DeserializationError err = deserializeJson(doc, line);
@@ -434,22 +394,20 @@ void handleSerialLine(const String& line) {
   if (!ev) return;
   const char* type = ev["type"] | "";
 
-  // ── command ────────────────────────────────────────────────────────────────
   if (strcmp(type, "command") == 0) {
     const char* param = ev["param"] | "";
     int value = ev["value"] | 0;
 
-    if      (strcmp(param, "health")    == 0) {
+    if (strcmp(param, "health") == 0) {
       int prev = health;
       health = constrain(value, 0, 100);
-      // Server-triggered respawn: health restored above 0 while dead
       if (isDead && health > 0) {
         isDead = false;
         Serial.println(F("[RESPAWN] Server restored health — back in game!"));
       }
-      if      (health < prev) startBlink(180, 0,   0);  // hit  → red blink
-      else if (health > prev) startBlink(0,   180, 0);  // heal → green blink
-      else                    updateHealthLed();          // no change, just refresh
+      if      (health < prev) startBlink(180, 0,   0);
+      else if (health > prev) startBlink(0,   180, 0);
+      else                    updateHealthLed();
     }
     else if (strcmp(param, "ammo")      == 0)   ammo      = constrain(value, 0, 100);
     else if (strcmp(param, "ammoLevel") == 0)   ammoLevel = constrain(value, 1, 10);
@@ -461,12 +419,8 @@ void handleSerialLine(const String& line) {
     Serial.print("[CMD] "); Serial.print(param);
     Serial.print(" = "); Serial.println(value);
 
-  // ── system ────────────────────────────────────────────────────────────────
   } else if (strcmp(type, "system") == 0) {
     const char* action = ev["action"] | "";
-    // "pong"      — RPi replied to our periodic ping (primary path).
-    // "connected" — legacy one-shot sent when RPi MQTT connects.
-    // "heartbeat" — fallback (only sent to MQTT, not serial, but kept for safety).
     if (!rpiConnected &&
         (strcmp(action, "pong") == 0 ||
          strcmp(action, "connected") == 0 ||
@@ -480,14 +434,19 @@ void handleSerialLine(const String& line) {
 
 // ── Setup ──────────────────────────────────────────────────────────────────────
 void setup() {
-  Serial.begin(115200);   // USB debug
-  Serial2.begin(115200);  // Raspberry Pi via flex cable UART
+  Serial.begin(115200);
+  Serial2.begin(115200);
+
+  // Encoder ISRs — required by MeEncoderOnBoard even for PWM-only mode
+  attachInterrupt(motorL.getIntNum(),   isr_process_encoderL,   RISING);
+  attachInterrupt(motorR.getIntNum(),   isr_process_encoderR,   RISING);
+  attachInterrupt(motorAux.getIntNum(), isr_process_encoderAux, RISING);
 
   // IR transmitter
   pinMode(IR_PIN, OUTPUT);
   digitalWrite(IR_PIN, LOW);
 
-  // IR receivers — start listening on pin 1
+  // IR receivers
   IrReceiver.begin(IR_RX_PIN_1, DISABLE_LED_FEEDBACK);
   activeRxPin = IR_RX_PIN_1;
   Serial.print(F("IR RX: A11 (pin ")); Serial.print(IR_RX_PIN_1);
@@ -496,10 +455,9 @@ void setup() {
   Serial.print(F("IR TX: A12 (pin ")); Serial.print(IR_PIN);
   Serial.println(F(") — NEC software"));
 
-  // Health LEDs — both yellow while waiting for RPi
   led1.setpin(A14); led1.setNumber(4);
   led2.setpin(A13); led2.setNumber(4);
-  setAllLeds(180, 140, 0);  // yellow = not yet connected
+  setAllLeds(180, 140, 0);
 
   SPI.begin();
   rfid.PCD_Init();
@@ -514,24 +472,20 @@ void setup() {
   MePS2.begin(115200);
   delay(1000);
   stopAll();
+
+  Serial.println(F("Motors: SLOT1=LEFT track, SLOT4=RIGHT track, SLOT2=AUX"));
+  Serial.println(F("Control: L-stick Y=left track, R-stick Y=right track, D-pad L/R=aux"));
 }
 
 // ── Loop ───────────────────────────────────────────────────────────────────────
 void loop() {
   unsigned long now = millis();
 
-  // ── LED blink animation ────────────────────────────────────────────────────
   updateBlink(now);
-
-  // ── IR receive ─────────────────────────────────────────────────────────────
   handleIRReceive();
 
   // ── Death state ────────────────────────────────────────────────────────────
-  // Tank can still drive at full speed but cannot shoot.
-  // Respawn is triggered by the server when the tank drives over its home base
-  // RFID tag (server sends "command health 100").
   if (isDead) {
-    // Receive commands from server (health restore clears isDead in handleSerialLine)
     while (Serial2.available()) {
       char c = (char)Serial2.read();
       Serial.write(c);
@@ -543,29 +497,28 @@ void loop() {
       }
     }
 
-    // RFID scan — drives to home base and sends rfid event so server can respawn
     String deadUid = readRfidUid(now);
     if (deadUid.length() > 0) {
       Serial.print(F("RFID (dead): ")); Serial.println(deadUid);
       sendRfidEvent(deadUid);
     }
 
-    // Drive at full maxSpeed — no shooting
+    // Driving still works while dead — both tracks and aux motor
     MePS2.loop();
-    float lx = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_LX));
     float ly = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_LY));
-    float rx = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_RX));
-    mecanumDrive(rx, -lx, ly);
+    float ry = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_RY));
+    tankDrive(ly, ry);
+    auxDrive();
 
     if (now - lastPing >= PING_INTERVAL_MS) { sendPing(); lastPing = now; }
     if (now - lastTelemetry >= TELEMETRY_INTERVAL_MS) { sendTelemetry(); lastTelemetry = now; }
-    return;  // skip fire logic below
+    return;
   }
 
-  // ── Receive from RPi (commands + system events) ───────────────────────────
+  // ── Receive from RPi ───────────────────────────────────────────────────────
   while (Serial2.available()) {
     char c = (char)Serial2.read();
-    Serial.write(c);  // DEBUG: echo every byte to USB serial so we can see what arrives
+    Serial.write(c);
     if (c == '\n') {
       handleSerialLine(cmdBuffer);
       cmdBuffer = "";
@@ -581,18 +534,21 @@ void loop() {
     sendRfidEvent(uid);
   }
 
-  // ── Read controller ────────────────────────────────────────────────────────
+  // ── Read controller — tracks + aux motor ───────────────────────────────────
+  // L-stick Y → LEFT track (SLOT1)
+  // R-stick Y → RIGHT track (SLOT4)
+  // D-pad RIGHT → AUX forward @ AUX_SPEED, LEFT → AUX backward, neither → stop
   MePS2.loop();
-  float lx = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_LX));
   float ly = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_LY));
-  float rx = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_RX));
-  mecanumDrive(rx, -lx, ly);
+  float ry = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_RY));
+  tankDrive(ly, ry);
+  auxDrive();
 
-  // ── Square button → fire ───────────────────────────────────────────────────
+  // ── Square → fire ──────────────────────────────────────────────────────────
   bool squareNow = MePS2.ButtonPressed(MeJOYSTICK_SQUARE);
   if (squareNow && !squarePrevious) {
     if (ammo > 0 && (now - lastFireTime >= (unsigned long)fireSpeed)) {
-      fireIR();             // send NEC frame: addr=TANK_ID hash, cmd=ammoLevel
+      fireIR();
       ammo--;
       lastFireTime = now;
       sendFireEvent();
@@ -600,13 +556,11 @@ void loop() {
   }
   squarePrevious = squareNow;
 
-  // ── Periodic RPi ping ──────────────────────────────────────────────────────
+  // ── Periodic ping + telemetry ──────────────────────────────────────────────
   if (now - lastPing >= PING_INTERVAL_MS) {
     sendPing();
     lastPing = now;
   }
-
-  // ── Periodic telemetry ─────────────────────────────────────────────────────
   if (now - lastTelemetry >= TELEMETRY_INTERVAL_MS) {
     sendTelemetry();
     lastTelemetry = now;
