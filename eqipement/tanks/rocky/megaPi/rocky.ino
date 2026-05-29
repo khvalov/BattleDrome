@@ -53,10 +53,13 @@ const unsigned long IR_SWITCH_MS = 200;
 uint8_t       activeRxPin  = IR_RX_PIN_1;
 unsigned long lastRxSwitch = 0;
 
-// ── Health LEDs ────────────────────────────────────────────────────────────────
-MeRGBLed led1;     // A14 — 2x2 indicator
-MeRGBLed led2;     // A13 — 2x2 indicator
-MeRGBLed matrix;   // A9  — 4x4 alive/dead matrix (16 LEDs, green=alive, red=dead)
+// ── Health LED (single WS2812 4×4 matrix, A9, 16 LEDs) ───────────────────────
+// Mirrors wheely's two 2×2 LED approach — same colour logic, same event triggers.
+// Boot:          yellow  (waiting for RPi)
+// RPi connected: switches to health-based colour
+// health > 50 → green | 5–50 → yellow | < 5 → red
+// Hit blink: red ×2 | Heal blink: green ×2  (non-blocking, via updateBlink)
+MeRGBLed matrix;   // A9 — 4×4 matrix (16 LEDs)
 
 bool rpiConnected = false;
 
@@ -354,34 +357,35 @@ void sendFireEvent() {
 }
 
 // ── LEDs ───────────────────────────────────────────────────────────────────────
+// All 16 LEDs addressed at once via index 0 (MeRGBLed broadcast).
 void setAllLeds(uint8_t r, uint8_t g, uint8_t b) {
-  led1.setColor(r, g, b); led1.show();
-  led2.setColor(r, g, b); led2.show();
-}
-
-// 4x4 matrix on A9 — green = alive, red = dead.
-// setColor(0, r, g, b) addresses all LEDs in the strip at once.
-void setMatrixAlive() {
-  matrix.setColor(0, 0, 180, 0);   // all 16 LEDs green
+  matrix.setColor(0, r, g, b);
   matrix.show();
 }
 
-void setMatrixDead() {
-  matrix.setColor(0, 180, 0, 0);   // all 16 LEDs red
-  matrix.show();
-}
+// Convenience wrappers — used by respawn() and the death path so call-sites
+// remain readable; they now go through the unified setAllLeds() pipeline and
+// therefore participate in the same health-colour + blink system.
+void setMatrixAlive() { setAllLeds(0,   180, 0); }
+void setMatrixDead()  { setAllLeds(180,   0, 0); }
 
+// Called on every health change and on RPi connect.
+// No-op until rpiConnected — startup colour (yellow) is set in setup().
 void updateHealthLed() {
   if (!rpiConnected) return;
-  if      (health > 50) setAllLeds(0,   180,   0);
-  else if (health >= 5) setAllLeds(180, 140,   0);
-  else                  setAllLeds(180,   0,   0);
+  if      (health > 50) setAllLeds(0,   180,   0);  // green
+  else if (health >= 5) setAllLeds(180, 140,   0);  // yellow
+  else                  setAllLeds(180,   0,   0);  // red
 }
 
+// ── LED blink ──────────────────────────────────────────────────────────────────
+// Kick off a 2-blink sequence (4 half-periods) in the chosen colour.
+// Non-blocking: driven by updateBlink() every loop() tick.
+// After the sequence finishes, updateHealthLed() restores the correct colour.
 void startBlink(uint8_t r, uint8_t g, uint8_t b) {
   blinkR = r; blinkG = g; blinkB = b;
-  blinkSteps = 4;
-  blinkLast  = millis() - BLINK_INTERVAL_MS;
+  blinkSteps = 4;   // 4 half-periods = 2 full blinks
+  blinkLast  = millis() - BLINK_INTERVAL_MS;  // fire first step immediately
 }
 
 void updateBlink(unsigned long now) {
@@ -389,11 +393,12 @@ void updateBlink(unsigned long now) {
   if (now - blinkLast < BLINK_INTERVAL_MS) return;
   blinkLast = now;
 
+  // Odd remaining steps → colour on; even → off
   if (blinkSteps % 2 == 0) setAllLeds(0, 0, 0);
   else                      setAllLeds(blinkR, blinkG, blinkB);
 
   blinkSteps--;
-  if (blinkSteps == 0) updateHealthLed();
+  if (blinkSteps == 0) updateHealthLed();  // restore health colour when done
 }
 
 // ── Serial handler ────────────────────────────────────────────────────────────
@@ -471,13 +476,10 @@ void setup() {
   Serial.print(F("IR TX: A12 (pin ")); Serial.print(IR_PIN);
   Serial.println(F(") — NEC software"));
 
-  led1.setpin(A14); led1.setNumber(4);
-  led2.setpin(A13); led2.setNumber(4);
-  setAllLeds(180, 140, 0);
-
-  // 4x4 alive/dead matrix on A9 — start green (alive)
+  // 4×4 health matrix on A9 — start yellow (waiting for RPi)
+  // Switches to health-based colour once the first pong/connected arrives.
   matrix.setpin(A9); matrix.setNumber(16);
-  setMatrixAlive();
+  setAllLeds(180, 140, 0);  // yellow = not yet connected
 
   SPI.begin();
   rfid.PCD_Init();
