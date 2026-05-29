@@ -25,7 +25,7 @@ const char TANK_TYPE[] = "rocky";
 // SLOT3 is unused.
 MeEncoderOnBoard motorL(SLOT1);
 MeEncoderOnBoard motorR(SLOT4);
-MeEncoderOnBoard motorAux(SLOT2);
+MeEncoderOnBoard motorAux(SLOT3);
 
 MePS2 MePS2(PORT_15);
 
@@ -36,7 +36,7 @@ const int SIGN_R   = +1;
 const int SIGN_AUX = -1;
 
 // Track speed (joystick driven)
-int maxSpeed = 100;  // max PWM — overridable via RFID/command
+int maxSpeed = 160;  // max PWM — overridable via RFID/command
 int minSpeed = 20;   // minimum PWM when moving — overridable via RFID/command
 const int DEADZONE = 20;
 
@@ -158,8 +158,8 @@ void tankDrive(float leftIn, float rightIn) {
 
 // Aux motor: D-pad right = forward at AUX_SPEED, left = backward, neither = stop.
 void auxDrive() {
-  bool rightHeld = MePS2.ButtonPressed(MeJOYSTICK_RIGHT);
-  bool leftHeld  = MePS2.ButtonPressed(MeJOYSTICK_LEFT);
+  bool rightHeld = MePS2.ButtonPressed(MeJOYSTICK_UP);
+  bool leftHeld  = MePS2.ButtonPressed(MeJOYSTICK_DOWN);
 
   if      (rightHeld) motorAux.setMotorPwm(SIGN_AUX *  AUX_SPEED);
   else if (leftHeld)  motorAux.setMotorPwm(SIGN_AUX * -AUX_SPEED);
