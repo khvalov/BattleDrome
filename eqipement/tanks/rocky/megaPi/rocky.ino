@@ -19,13 +19,19 @@ const char TANK_TYPE[] = "rocky";
 
 // ── Motor slot mapping ─────────────────────────────────────────────────────────
 // 3 encoder motors on MegaPi onboard encoder slots:
-//   SLOT1 = LEFT track   (joystick: left  stick Y)
-//   SLOT4 = RIGHT track  (joystick: right stick Y)
-//   SLOT2 = AUX motor    (D-pad: RIGHT=forward@50, LEFT=backward@50)
-// SLOT3 is unused.
+//   SLOT1 = LEFT track   (joystick: left  stick Y)   pin 11  Timer1
+//   SLOT4 = RIGHT track  (joystick: right stick Y)   pin  5  Timer3
+//   SLOT2 = AUX motor    (D-pad: UP=forward, DOWN)   pin  9  Timer2
+//
+// SLOT3 (pin 6, Timer4) is avoided: IRremote defaults to Timer4 on ATmega2560
+// and hijacks pin 6, making any analogWrite to SLOT3 produce no output.
+// SLOT2 (Timer2) is free — TCCR2 below already configures it for fast PWM.
+// Note: SLOT2 encoder port-B shares A12 with IR_TX_PIN. Since we use direct
+// setMotorPwm() (not encoder PID), the pulse count is never read, so the
+// A12 overlap during IR firing is harmless.
 MeEncoderOnBoard motorL(SLOT1);
 MeEncoderOnBoard motorR(SLOT4);
-MeEncoderOnBoard motorAux(SLOT3);
+MeEncoderOnBoard motorAux(SLOT2);
 
 MePS2 MePS2(PORT_15);
 
@@ -33,15 +39,16 @@ MePS2 MePS2(PORT_15);
 // Flip these if a stick/button moves a motor the wrong way.
 const int SIGN_L   = +1;
 const int SIGN_R   = +1;
-const int SIGN_AUX = -1;
+const int SIGN_AUX = 1;
 
 // Track speed (joystick driven)
 int maxSpeed = 160;  // max PWM — overridable via RFID/command
 int minSpeed = 20;   // minimum PWM when moving — overridable via RFID/command
 const int DEADZONE = 20;
 
-// Aux motor speed (D-pad driven) — fixed, not affected by maxSpeed
-const int AUX_SPEED = 30;
+// Aux motor speed (D-pad driven) — fixed, not affected by maxSpeed.
+// Bump this up if the aux motor doesn't move; raise toward 80–127 for heavy loads.
+const int AUX_SPEED = 50;
 
 // ── IR transmitter ─────────────────────────────────────────────────────────────
 const uint8_t IR_PIN = A12;
@@ -54,11 +61,6 @@ uint8_t       activeRxPin  = IR_RX_PIN_1;
 unsigned long lastRxSwitch = 0;
 
 // ── Health LED (single WS2812 4×4 matrix, A9, 16 LEDs) ───────────────────────
-// Mirrors wheely's two 2×2 LED approach — same colour logic, same event triggers.
-// Boot:          yellow  (waiting for RPi)
-// RPi connected: switches to health-based colour
-// health > 50 → green | 5–50 → yellow | < 5 → red
-// Hit blink: red ×2 | Heal blink: green ×2  (non-blocking, via updateBlink)
 MeRGBLed matrix;   // A9 — 4×4 matrix (16 LEDs)
 
 bool rpiConnected = false;
@@ -112,8 +114,10 @@ unsigned long blinkLast  = 0;
 String cmdBuffer = "";
 
 // ── Encoder ISRs ───────────────────────────────────────────────────────────────
-// Required by MeEncoderOnBoard. We use PWM-only control, but the library
-// still expects these to be attached.
+// Required by MeEncoderOnBoard. The L/R tracks use PWM-only control but the
+// library still expects these to be attached. The AUX motor genuinely uses
+// the encoder feedback via setTarPWM() + .loop(), which is what makes SLOT3
+// reliable at low PWM values.
 void isr_process_encoderL(void) {
   if (digitalRead(motorL.getPortB()) == 0) motorL.pulsePosMinus();
   else motorL.pulsePosPlus();
@@ -159,14 +163,14 @@ void tankDrive(float leftIn, float rightIn) {
   speedR = abs(right);
 }
 
-// Aux motor: D-pad right = forward at AUX_SPEED, left = backward, neither = stop.
+// Aux motor: D-pad UP = forward at AUX_SPEED, DOWN = backward, neither = stop.
 void auxDrive() {
-  bool rightHeld = MePS2.ButtonPressed(MeJOYSTICK_UP);
-  bool leftHeld  = MePS2.ButtonPressed(MeJOYSTICK_DOWN);
+  bool upHeld   = MePS2.ButtonPressed(MeJOYSTICK_UP);
+  bool downHeld = MePS2.ButtonPressed(MeJOYSTICK_DOWN);
 
-  if      (rightHeld) motorAux.setMotorPwm(SIGN_AUX *  AUX_SPEED);
-  else if (leftHeld)  motorAux.setMotorPwm(SIGN_AUX * -AUX_SPEED);
-  else                motorAux.setMotorPwm(0);
+  if      (upHeld)   motorAux.setMotorPwm(SIGN_AUX *  AUX_SPEED);
+  else if (downHeld) motorAux.setMotorPwm(SIGN_AUX * -AUX_SPEED);
+  else               motorAux.setMotorPwm(0);
 }
 
 // ── IR blaster — NEC protocol ──────────────────────────────────────────────────
@@ -357,35 +361,25 @@ void sendFireEvent() {
 }
 
 // ── LEDs ───────────────────────────────────────────────────────────────────────
-// All 16 LEDs addressed at once via index 0 (MeRGBLed broadcast).
 void setAllLeds(uint8_t r, uint8_t g, uint8_t b) {
   matrix.setColor(0, r, g, b);
   matrix.show();
 }
 
-// Convenience wrappers — used by respawn() and the death path so call-sites
-// remain readable; they now go through the unified setAllLeds() pipeline and
-// therefore participate in the same health-colour + blink system.
 void setMatrixAlive() { setAllLeds(0,   180, 0); }
 void setMatrixDead()  { setAllLeds(180,   0, 0); }
 
-// Called on every health change and on RPi connect.
-// No-op until rpiConnected — startup colour (yellow) is set in setup().
 void updateHealthLed() {
   if (!rpiConnected) return;
-  if      (health > 50) setAllLeds(0,   180,   0);  // green
-  else if (health >= 5) setAllLeds(180, 140,   0);  // yellow
-  else                  setAllLeds(180,   0,   0);  // red
+  if      (health > 50) setAllLeds(0,   180,   0);
+  else if (health >= 5) setAllLeds(180, 140,   0);
+  else                  setAllLeds(180,   0,   0);
 }
 
-// ── LED blink ──────────────────────────────────────────────────────────────────
-// Kick off a 2-blink sequence (4 half-periods) in the chosen colour.
-// Non-blocking: driven by updateBlink() every loop() tick.
-// After the sequence finishes, updateHealthLed() restores the correct colour.
 void startBlink(uint8_t r, uint8_t g, uint8_t b) {
   blinkR = r; blinkG = g; blinkB = b;
-  blinkSteps = 4;   // 4 half-periods = 2 full blinks
-  blinkLast  = millis() - BLINK_INTERVAL_MS;  // fire first step immediately
+  blinkSteps = 4;
+  blinkLast  = millis() - BLINK_INTERVAL_MS;
 }
 
 void updateBlink(unsigned long now) {
@@ -393,12 +387,11 @@ void updateBlink(unsigned long now) {
   if (now - blinkLast < BLINK_INTERVAL_MS) return;
   blinkLast = now;
 
-  // Odd remaining steps → colour on; even → off
   if (blinkSteps % 2 == 0) setAllLeds(0, 0, 0);
   else                      setAllLeds(blinkR, blinkG, blinkB);
 
   blinkSteps--;
-  if (blinkSteps == 0) updateHealthLed();  // restore health colour when done
+  if (blinkSteps == 0) updateHealthLed();
 }
 
 // ── Serial handler ────────────────────────────────────────────────────────────
@@ -458,7 +451,9 @@ void setup() {
   Serial.begin(115200);
   Serial2.begin(115200);
 
-  // Encoder ISRs — required by MeEncoderOnBoard even for PWM-only mode
+  // Encoder ISRs — required by MeEncoderOnBoard.
+  // The aux motor on SLOT3 genuinely needs this (it drives setTarPWM/.loop control);
+  // the track motors just attach it for library compatibility.
   attachInterrupt(motorL.getIntNum(),   isr_process_encoderL,   RISING);
   attachInterrupt(motorR.getIntNum(),   isr_process_encoderR,   RISING);
   attachInterrupt(motorAux.getIntNum(), isr_process_encoderAux, RISING);
@@ -477,15 +472,17 @@ void setup() {
   Serial.println(F(") — NEC software"));
 
   // 4×4 health matrix on A9 — start yellow (waiting for RPi)
-  // Switches to health-based colour once the first pong/connected arrives.
   matrix.setpin(A9); matrix.setNumber(16);
-  setAllLeds(180, 140, 0);  // yellow = not yet connected
+  setAllLeds(180, 140, 0);
 
   SPI.begin();
   rfid.PCD_Init();
   Serial.print("RFID ready. SS_PIN="); Serial.print(SS_PIN);
   Serial.print("  Tank: "); Serial.println(TANK_ID);
 
+  // PWM timer setup — same as the mBlock5 reference sketch.
+  // Timer1 → SLOT1 (left track), Timer2 → SLOT4 (right track).
+  // SLOT3 (aux) is driven by the .loop() PID system; Timer3/4 left at defaults.
   TCCR1A = _BV(WGM10);
   TCCR1B = _BV(CS11) | _BV(WGM12);
   TCCR2A = _BV(WGM21) | _BV(WGM20);
@@ -495,8 +492,8 @@ void setup() {
   delay(1000);
   stopAll();
 
-  Serial.println(F("Motors: SLOT1=LEFT track, SLOT4=RIGHT track, SLOT2=AUX"));
-  Serial.println(F("Control: L-stick Y=left track, R-stick Y=right track, D-pad L/R=aux"));
+  Serial.println(F("Motors: SLOT1=LEFT track, SLOT4=RIGHT track, SLOT3=AUX"));
+  Serial.println(F("Control: L-stick Y=left track, R-stick Y=right track, D-pad U/D=aux"));
 }
 
 // ── Loop ───────────────────────────────────────────────────────────────────────
@@ -557,9 +554,6 @@ void loop() {
   }
 
   // ── Read controller — tracks + aux motor ───────────────────────────────────
-  // L-stick Y → LEFT track (SLOT1)
-  // R-stick Y → RIGHT track (SLOT4)
-  // D-pad RIGHT → AUX forward @ AUX_SPEED, LEFT → AUX backward, neither → stop
   MePS2.loop();
   float ly = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_LY));
   float ry = applyDeadzone(MePS2.MeAnalog(MeJOYSTICK_RY));
