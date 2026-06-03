@@ -92,7 +92,7 @@ Sent immediately when the square button fires. The central server uses this to u
 | `ammo` | Remaining rounds **after** this shot |
 
 ### `rfid` — tank → server, on each card scan
-Sent when the MFRC522 reader detects a new card. Same UID is suppressed for 3 s (debounce). The server looks up the UID in its action table and, if a match is found, publishes a `command` back to the tank.
+Sent when the MFRC522 reader detects a new card. Same UID is suppressed for 5 s (debounce). The server looks up the UID in its action table and, if a match is found, publishes a `command` back to the tank.
 
 ```json
 {
@@ -115,19 +115,33 @@ Sent when the MFRC522 reader detects a new card. Same UID is suppressed for 3 s 
 | `uid` | Card UID as uppercase hex string (4–7 bytes, no spaces) |
 
 ### `command` — server → tank, via MQTT commands topic
-Updates a single game-state variable on the Arduino. The Raspberry Pi subscribes to the commands topic and forwards matching messages to Arduino via UART.
+Updates a game-state variable or triggers an LED effect on the Arduino. The Raspberry Pi subscribes to the commands topic and forwards matching messages to the Arduino via UART (omitting `timestamp` to stay within the 64-byte serial buffer limit).
 
 ```json
 { "timestamp": 0, "event": { "type": "command", "param": "health", "value": 80 } }
 ```
 
+**Game-state params** (persist until changed):
+
 | `param` | Type | Range | Arduino behaviour |
 |---|---|---|---|
-| `health` | int | 0–100 | `constrain(value, 0, 100)` |
+| `health` | int | 0–100 | `constrain(value, 0, 100)`; if tank was dead and value > 0, clears `isDead` |
 | `ammo` | int | 0–100 | `constrain(value, 0, 100)` |
 | `ammoLevel` | int | 1–10 | `constrain(value, 1, 10)` |
 | `fireSpeed` | int | 1–10 | `constrain(value, 1, 10)` |
 | `immunable` | int | 0 / 1 | `value != 0` → bool |
+| `maxSpeed` | int | 1–255 | `constrain(value, 1, 255)` |
+| `minSpeed` | int | 0–255 | `constrain(value, 0, 255)` |
+
+**LED effect param** (one-shot, does not persist):
+
+| `param` | `value` | LED effect |
+|---|---|---|
+| `led` | `1` | Treasure collected — gold (180,120,0) blink ×3 |
+| `led` | `2` | Immunity granted — purple (120,0,180) blink ×2 |
+| `led` | `3` | Win / bonus — white (180,180,180) blink ×4 |
+
+The `led` command is sent automatically by the server (e.g. on new treasure in Treasure Hunt). It can also be sent manually. Message size is 48 bytes — within the 64-byte UART buffer limit.
 
 ---
 

@@ -25,7 +25,7 @@ Wheely is an omnidirectional mobile platform based on the **mBot Mega** architec
 | 2 | **DC Motor Drivers** | Dual-channel drivers for all 4 motors |
 | 1 | **Bluetooth Module** | Wireless remote control (PS2 protocol) |
 | 4 | **Encoder DC Motors** | High-torque motors for precision movement |
-| 2 | **WS2812 2×2 LED matrices** | Health / status indicators (MeRGBLed, pins A14 and A13) |
+| 2 | **WS2812 3×3 LED matrices** | Health / status indicators (MeRGBLed, 9 LEDs each, pins A14 and A13) |
 | 1 | **Raspberry Pi Zero** | Network bridge to MQTT |
 | 1 | **MFRC522 RFID reader** | SPI RFID card reader (RST=pin 30, SS=pin 7) |
 | 1 | **IR LED** | Firing transmitter (pin A12) |
@@ -182,35 +182,31 @@ When `health` reaches 0:
 
 ### Health LED matrices
 
-Two **WS2812 2×2 LED matrices** (4 pixels each) driven by `MeRGBLed` (bundled with `MeMegaPi`).
+Two **WS2812 3×3 LED matrices** (9 pixels each) driven by `MeRGBLed` (bundled with `MeMegaPi`). Both matrices always show the same colour.
 
-| Pin | Role |
-|:---|:---|
-| A14 (= pin 68) | `led1` |
-| A13 (= pin 67) | `led2` |
+| Pin | Object | LEDs |
+|:---|:---|:---|
+| A14 (= pin 68) | `led1` | 9 (3×3) |
+| A13 (= pin 67) | `led2` | 9 (3×3) |
 
-Both matrices always show the same colour.
+`startBlinkN(r, g, b, n)` runs N half-periods (N/2 full blinks) non-blocking; `startBlink(r, g, b)` is a shorthand for 2 blinks (n=4).
 
-**Boot sequence:**
+**Colour table:**
 
-| State | Colour |
-|:---|:---|
-| Startup (waiting for RPi) | 🟡 Yellow |
-| RPi sends `system/connected` over UART | 🟢 Green (switches to health mode) |
+| Trigger | Colour | Blinks |
+|:---|:---|:---|
+| Startup — waiting for RPi | 🟡 Yellow | steady |
+| RPi connected, health > 50 | 🟢 Green | steady |
+| RPi connected, health 5–50 | 🟡 Yellow | steady |
+| RPi connected, health < 5 / dead | 🔴 Red | steady |
+| IR hit received | 🔴 Red | ×2 |
+| Health command decreased (server) | 🔴 Red | ×2 |
+| Health command increased (heal / respawn) | 🟢 Green | ×2 |
+| `led 1` — treasure collected | 🟠 Gold (180,120,0) | ×3 |
+| `led 2` — immunity granted | 🟣 Purple (120,0,180) | ×2 |
+| `led 3` — win / bonus | ⬜ White (180,180,180) | ×4 |
 
-**Health colours (active after RPi connects):**
-
-| Health | Colour |
-|:---|:---|
-| > 50 | 🟢 Green |
-| 5 – 50 | 🟡 Yellow |
-| < 5 (critical / dead) | 🔴 Red |
-
-**Hit / heal blink:**
-- **IR hit received** → both matrices blink **red** twice immediately
-- **Health `command` decreased** → both matrices blink **red** twice
-- **Health `command` increased** → both matrices blink **green** twice
-- Non-blocking, 100 ms per flash; correct health colour restored automatically after
+After any blink sequence, LEDs automatically restore the current health colour.
 
 ### Telemetry
 
@@ -271,9 +267,11 @@ Send a `command` JSON to the tank's MQTT commands topic — the Raspberry Pi str
 { "event": { "type": "command", "param": "health", "value": 80 } }
 ```
 
-Valid `param` values: `health`, `ammo`, `ammoLevel`, `fireSpeed`, `immunable`, `maxSpeed`, `minSpeed`.
+Valid `param` values: `health`, `ammo`, `ammoLevel`, `fireSpeed`, `immunable`, `maxSpeed`, `minSpeed`, `led`.
 
 Values are clamped via `constrain()`. `immunable` is boolean (`0` = false, any non-zero = true).
+
+The `led` param triggers a one-shot LED effect (see LED colour table above) and does not alter game state.
 
 > **⚠️ Serial2 RX buffer — 64 bytes hard limit**
 > The ATmega2560 hardware UART RX buffer is 64 bytes. Messages longer than 64 bytes are silently truncated when the main loop is briefly busy, corrupting the JSON. The RPi bridge always omits `timestamp` before writing to serial so every message stays within this limit. Do not add fields to serial-bound messages without checking the byte count.

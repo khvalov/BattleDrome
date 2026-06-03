@@ -64,7 +64,7 @@ Both Tag Reader and Telemetry Log tabs show an unread-count badge when new event
 
 | Mode | Rules |
 |:---|:---|
-| **Free Play** | FFA. Each tank gets a home RFID. Killed tanks can drive but not shoot — return to home base to respawn with immunity. Wins/losses scoring. |
+| **Free Play** | FFA. Each tank gets a home RFID. Killed tanks can drive but not shoot — return to home base to respawn with immunity. Wins/losses scoring. When a tank powers on and scans its home base RFID, the dashboard auto-fills that tank's UID field. |
 | **CTF — Teams** | Teams with shared home RFID. When a team's base is captured, the **entire team is eliminated** (all tanks stop). Last team standing wins. Timed: most captures wins if multiple teams alive. Dead tanks respawn at own base (unless team eliminated). |
 | **CTF — Solo** | Each tank has its own home RFID (assigned like Free Play). Base captured = eliminated. Kill by shooting = eliminated (no respawn). Timed: most captures wins. Unlimited: last standing wins. |
 | **Treasure Hunt** | Tanks collect points by scanning RFID tags. Each tank can only scan a tag once (other tanks can still scan it). Unregistered tags auto-register as 1 point. Optional shooting — hits reduce speed by 50% for 3s (no health damage). Highest score at time up wins. |
@@ -97,7 +97,17 @@ mosquitto_pub -h broker.hivemq.com \
   -m '{"timestamp":0,"event":{"type":"command","param":"health","value":80}}'
 ```
 
-Valid `param` values: `health`, `ammo`, `ammoLevel`, `fireSpeed`, `immunable`, `maxSpeed`, `minSpeed`.
+Valid `param` values: `health`, `ammo`, `ammoLevel`, `fireSpeed`, `immunable`, `maxSpeed`, `minSpeed`, `led`.
+
+The `led` param triggers a one-shot LED blink effect on the tank's matrix — it does not alter game state:
+
+| `value` | Effect |
+|:---|:---|
+| `1` | Treasure collected — gold blink ×3 |
+| `2` | Immunity granted — purple blink ×2 |
+| `3` | Win / bonus — white blink ×4 |
+
+The server sends `led 1` automatically when a tank collects a **new** treasure in Treasure Hunt mode (already-collected tags are ignored and produce no LED signal).
 
 ---
 

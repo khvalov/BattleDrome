@@ -22,9 +22,10 @@ Trinity is a two-wheel differential-drive platform based on the **MegaPi** (ATme
 | Qty | Component | Description |
 |:---|:---|:---|
 | 1 | **MegaPi** | Main microcontroller (Arduino Mega 2560 compatible) |
-| 1 | **MegaPi PWM Motor Driver** | Built-in dual-channel PWM driver on PORT_1 and PORT_4 (`MeMegaPiDCMotor`) |
+| 1 | **MegaPi** | Main microcontroller; built-in encoder motor drivers (SLOT1–SLOT4) |
 | 1 | **Bluetooth Module** | Wireless remote control (PS2 protocol) |
-| 2 | **Brushed DC Motors** | PWM-controlled via MegaPi (left on PORT_1, right on PORT_4); no encoder feedback |
+| 3 | **Encoder DC Motors** | Left track (SLOT1), right track (SLOT4), aux (SLOT2) |
+| 1 | **WS2812 4×4 LED matrix** | Health / status indicator (MeRGBLed, 16 LEDs, pin A9) |
 | 1 | **Raspberry Pi Zero** | Network bridge to MQTT |
 | 1 | **MFRC522 RFID reader** | SPI RFID card reader (RST=pin 30, SS=A6) |
 | 1 | **IR LED** | Firing transmitter (A12 = pin 66) |
@@ -74,16 +75,17 @@ UART uses **`Serial2`** on the ATmega2560 at **115200 baud** — this is the har
 
 Each stick directly controls its corresponding track. Push both sticks up to go forward, both down to reverse, opposite directions to pivot in place.
 
-### Motor port mapping
+### Motor slot mapping
 
-Motors are driven by the MegaPi's built-in PWM H-bridge channels via `MeMegaPiDCMotor`. Speed is set by writing a signed PWM value (−255 to +255) directly to each port — no encoder feedback, open-loop only.
+Motors are driven by the MegaPi's onboard encoder slots (`MeEncoderOnBoard`). The encoder ISRs are attached at startup even though we use `setMotorPwm()` (open-loop PWM) rather than PID position control.
 
-| Port | Side | Direction constant | PWM range |
+| Slot | Motor | Control | Direction constant |
 |:---|:---|:---|:---|
-| PORT_1 | Left | `SIGN_L = +1` | −255 … +255 |
-| PORT_4 | Right | `SIGN_R = −1` | −255 … +255 |
+| SLOT1 | Left track | Left stick Y (`MeJOYSTICK_LY`) | `SIGN_L = +1` |
+| SLOT4 | Right track | Right stick Y (`MeJOYSTICK_RY`) | `SIGN_R = -1` |
+| SLOT2 | Aux motor | D-pad RIGHT = fwd, LEFT = rev | `SIGN_AUX = -1` |
 
-Flip `SIGN_L` or `SIGN_R` to `+1`/`-1` in the firmware if a motor runs the wrong direction.
+Flip the corresponding `SIGN_*` constant to `+1`/`-1` if a motor runs the wrong direction. Aux speed is fixed at `AUX_SPEED = 30` and is not affected by `maxSpeed`.
 
 Deadzone: **20 units** (joystick values below this threshold are treated as zero)
 
@@ -167,12 +169,33 @@ On each decoded NEC frame:
  bits 24–31 : ~cmd     (checksum)
 ```
 
+### Health LED matrix
+
+One **WS2812 4×4 LED matrix** (16 pixels) driven by `MeRGBLed` on pin **A9**. All 16 LEDs always show the same colour via `matrix.setColor(0, r, g, b)` (index 0 = broadcast to all pixels).
+
+`startBlinkN(r, g, b, n)` runs N half-periods (N/2 full blinks) non-blocking; `startBlink(r, g, b)` = 2 blinks (n=4).
+
+| Trigger | Colour | Blinks |
+|:---|:---|:---|
+| Startup — waiting for RPi | 🟡 Yellow | steady |
+| RPi connected, health > 50 | 🟢 Green | steady |
+| RPi connected, health 5–50 | 🟡 Yellow | steady |
+| RPi connected, health < 5 / dead | 🔴 Red | steady |
+| IR hit received | 🔴 Red | ×2 |
+| Health command decreased (server) | 🔴 Red | ×2 |
+| Health command increased (heal / respawn) | 🟢 Green | ×2 |
+| `led 1` — treasure collected | 🟠 Gold (180,120,0) | ×3 |
+| `led 2` — immunity granted | 🟣 Purple (120,0,180) | ×2 |
+| `led 3` — win / bonus | ⬜ White (180,180,180) | ×4 |
+
+After any blink sequence the matrix automatically restores the current health colour.
+
 ### Death and respawn
 
 When `health` reaches 0:
 - `isDead = true` — motors stop, all inputs ignored
-- USB serial prints: `[DEAD] Press START to respawn`
-- Pressing **START** on the PS2 controller calls `respawn()`: health and ammo reset to 100
+- USB serial prints: `[DEAD] Drive to home base to respawn`
+- Server sends `command health 100` when the tank drives over its home base RFID → clears `isDead` automatically
 
 ### Telemetry
 
@@ -253,10 +276,13 @@ Send a `command` JSON to the tank's MQTT commands topic — the Raspberry Pi str
 { "event": { "type": "command", "param": "health", "value": 80 } }
 ```
 
-Valid `param` values: `health`, `ammo`, `ammoLevel`, `fireSpeed`, `immunable`, `maxSpeed`, `minSpeed`.
+Valid `param` values: `health`, `ammo`, `ammoLevel`, `fireSpeed`, `immunable`, `maxSpeed`, `minSpeed`, `led`.
 
 Values are clamped via `constrain()`. `immunable` is boolean (`0` = false, any non-zero = true).
-`health` commands also handle server-triggered respawn: if the tank is dead and health is restored above 0, `isDead` is cleared automatically.
+
+`health` command: if the tank is dead (`isDead = true`) and `value > 0`, `isDead` is cleared automatically — this is the server-triggered respawn path.
+
+`led` param: triggers a one-shot LED blink effect (see LED matrix table above). Does not alter any game-state variable.
 
 > **⚠️ Serial2 RX buffer — 64 bytes hard limit**  
 > The ATmega2560 hardware UART RX buffer is 64 bytes. Messages longer than 64 bytes are silently truncated when the main loop is briefly busy, corrupting the JSON. The RPi bridge always omits `timestamp` before writing to serial so every message stays within this limit. Do not add fields to serial-bound messages without checking the byte count.

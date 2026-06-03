@@ -36,14 +36,16 @@ PS2 Bluetooth remote → MegaPi (ATmega2560) ←UART→ Raspberry Pi Zero ←MQT
 
 ## Firmware Development
 
-Two tank firmwares live in this repo — both share the same game-state schema and Serial2 protocol.
+Four tank firmwares — all share the same game-state schema, Serial2 protocol, and LED behaviour.
 
-| Tank | File | Drive | IR TX | IR RX | RFID SS |
-|---|---|---|---|---|---|
-| Wheely | `eqipement/tanks/wheely/megaPI/wheely.ino` | 4-wheel Mecanum | A12 | A11, A10 | A6 |
-| Trinity | `eqipement/tanks/trinity/megaPi/trinity.ino` | 2-wheel differential | A12 | A11, A10 | A6 |
+| Tank | File | Drive | LED hardware | IR TX | IR RX | RFID SS |
+|---|---|---|---|---|---|---|
+| Wheely | `eqipement/tanks/wheely/megaPI/wheely.ino` | 4-wheel Mecanum | 2× WS2812 3×3 (A14, A13) | A12 | A11, A10 | A6 |
+| Trinity | `eqipement/tanks/trinity/megaPi/trinity.ino` | 2-wheel + aux encoder | 1× WS2812 4×4 (A9) | A12 | A11, A10 | A6 |
+| Rocky | `eqipement/tanks/rocky/megaPi/rocky.ino` | 2-wheel + aux encoder | 1× WS2812 4×4 (A9) | A12 | A11, A10 | A6 |
+| Boozy | `eqipement/tanks/boozy/megaPi/boozy.ino` | 2-wheel + aux encoder | 1× WS2812 4×4 (A9) | A12 | A11, A10 | A6 |
 
-- Required libraries (both): `MeMegaPi`, `MePS2` (Makeblock), **`ArduinoJson`** by Benoit Blanchon, **`MFRC522`** by Miguel Balboa, **`IRremote`** by shirriff/z3t0/ArminJo, `SPI`, `Wire`, `SoftwareSerial` (built-in) — all via Library Manager
+- Required libraries (all): `MeMegaPi`, `MePS2` (Makeblock), **`ArduinoJson`** by Benoit Blanchon, **`MFRC522`** by Miguel Balboa, **`IRremote`** by shirriff/z3t0/ArminJo, `SPI`, `Wire`, `SoftwareSerial` (built-in) — all via Library Manager
 - Upload target: MegaPi board (ATmega2560)
 - `Serial` (115200) = USB debug; `Serial2` (115200) = Raspberry Pi UART via flex cable
 - Tank identity set via `TANK_ID` (≤6 chars) and `TANK_TYPE` constants at top of file
@@ -67,27 +69,60 @@ Two tank firmwares live in this repo — both share the same game-state schema a
 - On hit: firmware decrements health locally, sends `hit` event via Serial2 → RPi → MQTT; server computes authoritative new health and sends `command health <N>` back
 - Health = 0 → `isDead = true`; motors stop; pressing START respawns (health/ammo reset to 100)
 
+**LED behaviour (all 4 tanks — identical logic, different hardware):**
+
+`setAllLeds(r,g,b)` drives all LEDs at once. For Wheely it calls `led1` + `led2`; for Rocky/Trinity/Boozy it calls `matrix.setColor(0,r,g,b)` (index 0 = broadcast all).
+
+| State | Colour |
+|---|---|
+| Boot — waiting for RPi | 🟡 Yellow |
+| RPi connected, health > 50 | 🟢 Green |
+| RPi connected, health 5–50 | 🟡 Yellow |
+| RPi connected, health < 5 / dead | 🔴 Red |
+| IR hit or health command decreased | 🔴 Blink ×2 (non-blocking, 100 ms per step) |
+| Health command increased (heal/respawn) | 🟢 Blink ×2 |
+| Server `led` command (game events) | see below |
+
+`startBlinkN(r,g,b,n)` drives N half-periods (N/2 full blinks). `startBlink(r,g,b)` = `startBlinkN(...,4)`.
+
+**Server-controlled LED effects (`command` param = `led`, `value` = effect ID):**
+
+| Value | Effect | Colour | Blinks |
+|---|---|---|---|
+| `1` | Treasure collected (Treasure Hunt) | Gold (180,120,0) | 3 |
+| `2` | Immunity granted | Purple (120,0,180) | 2 |
+| `3` | Win / bonus | White (180,180,180) | 4 |
+
+Serial message: `{"event":{"type":"command","param":"led","value":1}}` = 48 bytes ✓
+
 **Wheely-specific:**
 - Motor port mapping: FL=PORT_12, FR=PORT_4, RL=PORT_9, RR=PORT_1
-- WS2812 health LEDs on A14 (led1) and A13 (led2): yellow = waiting for RPi, green/yellow/red = health level; blinks red on hit, green on heal
+- LED: two WS2812 **3×3** matrices (9 LEDs each) on A14 (`led1`) and A13 (`led2`); both always show the same colour via `setAllLeds()`
 
 **Trinity-specific:**
-- Motor port mapping: L=PORT_1, R=PORT_4
-- **Tank-stick controls:** Left stick Y = left track, Right stick Y = right track (each stick directly drives its track; no mixing)
-- Speed is fully server-controlled via `maxSpeed` command — no local health-based scaling
-- No LEDs (A13/A14 are not used)
+- Motor port mapping: encoder SLOT1=left, SLOT4=right, SLOT2=aux (D-pad RIGHT/LEFT)
+- LED: single WS2812 **4×4** matrix (16 LEDs) on A9
+
+**Rocky-specific:**
+- Motor port mapping: encoder SLOT1=left, SLOT4=right, SLOT2=aux (D-pad UP/DOWN)
+- LED: single WS2812 **4×4** matrix (16 LEDs) on A9
+- SLOT3 avoided (IRremote uses Timer4 on ATmega2560, which conflicts with SLOT3 PWM pin 6)
+
+**Boozy-specific:**
+- Motor port mapping: encoder SLOT1=left, SLOT4=right, SLOT2=aux (D-pad RIGHT/LEFT)
+- LED: single WS2812 **4×4** matrix (16 LEDs) on A9
 
 **Game-state variables (set via `command` messages):**
 
-| Variable | Wheely default | Trinity default | Range |
-|---|---|---|---|
-| `health` | 100 | 100 | 0–100 |
-| `ammo` | 100 | 100 | 0–100 |
-| `ammoLevel` | 1 | 3 | 1–10 |
-| `fireSpeed` | 1 | 6 | 1–10 |
-| `immunable` | false | false | bool |
-| `maxSpeed` | 160 | 160 | 1–255 |
-| `minSpeed` | 20 | 20 | 0–255 |
+| Variable | Wheely | Trinity | Rocky | Boozy | Range |
+|---|---|---|---|---|---|
+| `health` | 100 | 100 | 100 | 100 | 0–100 |
+| `ammo` | 100 | 100 | 10 | 100 | 0–100 |
+| `ammoLevel` | 1 | 1 | 2 | 1 | 1–10 |
+| `fireSpeed` | 1 | 1 | 1 | 1 | 1–10 |
+| `immunable` | false | false | false | false | bool |
+| `maxSpeed` | 160 | 160 | 160 | 160 | 1–255 |
+| `minSpeed` | 20 | 20 | 20 | 20 | 0–255 |
 
 ## Raspberry Pi Setup
 
@@ -198,7 +233,7 @@ mosquitto_pub -h broker.hivemq.com \
   -m '{"timestamp":0,"event":{"type":"command","param":"health","value":80}}'
 ```
 
-Valid `param` values: `health`, `ammo`, `ammoLevel`, `fireSpeed`, `immunable`, `maxSpeed`, `minSpeed`.
+Valid `param` values: `health`, `ammo`, `ammoLevel`, `fireSpeed`, `immunable`, `maxSpeed`, `minSpeed`, `led`.
 
 ## Key Constants
 
@@ -222,5 +257,6 @@ Measured sizes for current message types (bytes including `\r\n`):
 | `pong` | 54 |
 | `connected` | 59 |
 | `command` (longest param `fireSpeed`) | 59 |
+| `command led` (effect trigger) | 48 |
 
 Do **not** add fields to serial-bound messages without re-checking the byte count. The MQTT payloads (tank → server direction) are not affected — those travel Arduino TX → RPi RX and can be any length.
