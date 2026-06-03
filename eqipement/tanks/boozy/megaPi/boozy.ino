@@ -53,10 +53,9 @@ const unsigned long IR_SWITCH_MS = 200;
 uint8_t       activeRxPin  = IR_RX_PIN_1;
 unsigned long lastRxSwitch = 0;
 
-// ── Health LEDs ────────────────────────────────────────────────────────────────
-MeRGBLed led1;     // A14 — 2x2 indicator
-MeRGBLed led2;     // A13 — 2x2 indicator
-MeRGBLed matrix;   // A9  — 4x4 alive/dead matrix (16 LEDs, green=alive, red=dead)
+// ── Health LED (single WS2812 4×4 matrix, A9, 16 LEDs) ───────────────────────
+// Boot: yellow (waiting for RPi) → green/yellow/red based on health once connected.
+MeRGBLed matrix;   // A9 — 4×4 matrix (16 LEDs)
 
 bool rpiConnected = false;
 
@@ -354,34 +353,35 @@ void sendFireEvent() {
 }
 
 // ── LEDs ───────────────────────────────────────────────────────────────────────
+// All 16 LEDs addressed at once via broadcast index 0.
 void setAllLeds(uint8_t r, uint8_t g, uint8_t b) {
-  led1.setColor(r, g, b); led1.show();
-  led2.setColor(r, g, b); led2.show();
-}
-
-// 4x4 matrix on A9 — green = alive, red = dead.
-// setColor(0, r, g, b) addresses all LEDs in the strip at once.
-void setMatrixAlive() {
-  matrix.setColor(0, 0, 180, 0);   // all 16 LEDs green
+  matrix.setColor(0, r, g, b);
   matrix.show();
 }
 
-void setMatrixDead() {
-  matrix.setColor(0, 180, 0, 0);   // all 16 LEDs red
-  matrix.show();
-}
+// Convenience wrappers for readable call-sites.
+void setMatrixAlive() { setAllLeds(0,   180, 0); }
+void setMatrixDead()  { setAllLeds(180,   0, 0); }
 
+// Called on every health change and on RPi connect.
+// No-op until rpiConnected — startup colour (yellow) is set in setup().
 void updateHealthLed() {
   if (!rpiConnected) return;
-  if      (health > 50) setAllLeds(0,   180,   0);
-  else if (health >= 5) setAllLeds(180, 140,   0);
-  else                  setAllLeds(180,   0,   0);
+  if      (health > 50) setAllLeds(0,   180,   0);  // green
+  else if (health >= 5) setAllLeds(180, 140,   0);  // yellow
+  else                  setAllLeds(180,   0,   0);  // red
 }
 
-void startBlink(uint8_t r, uint8_t g, uint8_t b) {
+// ── LED blink ──────────────────────────────────────────────────────────────────
+// startBlinkN — N half-periods (N/2 full blinks). Fires immediately.
+// startBlink  — convenience wrapper: 2 full blinks (4 half-periods).
+void startBlinkN(uint8_t r, uint8_t g, uint8_t b, uint8_t n) {
   blinkR = r; blinkG = g; blinkB = b;
-  blinkSteps = 4;
+  blinkSteps = n;
   blinkLast  = millis() - BLINK_INTERVAL_MS;
+}
+void startBlink(uint8_t r, uint8_t g, uint8_t b) {
+  startBlinkN(r, g, b, 4);  // 4 half-periods = 2 full blinks
 }
 
 void updateBlink(unsigned long now) {
@@ -393,7 +393,7 @@ void updateBlink(unsigned long now) {
   else                      setAllLeds(blinkR, blinkG, blinkB);
 
   blinkSteps--;
-  if (blinkSteps == 0) updateHealthLed();
+  if (blinkSteps == 0) updateHealthLed();  // restore health colour when done
 }
 
 // ── Serial handler ────────────────────────────────────────────────────────────
@@ -431,6 +431,15 @@ void handleSerialLine(const String& line) {
     else if (strcmp(param, "immunable") == 0)   immunable = (value != 0);
     else if (strcmp(param, "maxSpeed")  == 0)   maxSpeed  = constrain(value, 1, 255);
     else if (strcmp(param, "minSpeed")  == 0)   minSpeed  = constrain(value, 0, 255);
+    else if (strcmp(param, "led")       == 0) {
+      // Server-triggered LED effect.
+      // 1 = treasure (gold ×3)    2 = immune (purple ×2)    3 = win/bonus (white ×4)
+      switch (value) {
+        case 1: startBlinkN(180, 120,   0, 6); break;
+        case 2: startBlinkN(120,   0, 180, 4); break;
+        case 3: startBlinkN(180, 180, 180, 8); break;
+      }
+    }
 
     Serial.print("[CMD] "); Serial.print(param);
     Serial.print(" = "); Serial.println(value);
@@ -471,13 +480,9 @@ void setup() {
   Serial.print(F("IR TX: A12 (pin ")); Serial.print(IR_PIN);
   Serial.println(F(") — NEC software"));
 
-  led1.setpin(A14); led1.setNumber(4);
-  led2.setpin(A13); led2.setNumber(4);
-  setAllLeds(180, 140, 0);
-
-  // 4x4 alive/dead matrix on A9 — start green (alive)
+  // 4×4 health matrix on A9 — start yellow (waiting for RPi)
   matrix.setpin(A9); matrix.setNumber(16);
-  setMatrixAlive();
+  setAllLeds(180, 140, 0);  // yellow = not yet connected
 
   SPI.begin();
   rfid.PCD_Init();

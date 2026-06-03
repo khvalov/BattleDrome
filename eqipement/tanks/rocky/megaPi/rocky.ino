@@ -376,10 +376,18 @@ void updateHealthLed() {
   else                  setAllLeds(180,   0,   0);
 }
 
-void startBlink(uint8_t r, uint8_t g, uint8_t b) {
+// ── LED blink ──────────────────────────────────────────────────────────────────
+// startBlinkN — N half-periods (N/2 full blinks). Fires immediately.
+// startBlink  — convenience wrapper: 2 full blinks (4 half-periods).
+// Non-blocking: driven by updateBlink() every loop() tick.
+// After the sequence finishes, updateHealthLed() restores the correct colour.
+void startBlinkN(uint8_t r, uint8_t g, uint8_t b, uint8_t n) {
   blinkR = r; blinkG = g; blinkB = b;
-  blinkSteps = 4;
+  blinkSteps = n;
   blinkLast  = millis() - BLINK_INTERVAL_MS;
+}
+void startBlink(uint8_t r, uint8_t g, uint8_t b) {
+  startBlinkN(r, g, b, 4);  // 4 half-periods = 2 full blinks
 }
 
 void updateBlink(unsigned long now) {
@@ -429,6 +437,15 @@ void handleSerialLine(const String& line) {
     else if (strcmp(param, "immunable") == 0)   immunable = (value != 0);
     else if (strcmp(param, "maxSpeed")  == 0)   maxSpeed  = constrain(value, 1, 255);
     else if (strcmp(param, "minSpeed")  == 0)   minSpeed  = constrain(value, 0, 255);
+    else if (strcmp(param, "led")       == 0) {
+      // Server-triggered LED effect.
+      // 1 = treasure (gold ×3)    2 = immune (purple ×2)    3 = win/bonus (white ×4)
+      switch (value) {
+        case 1: startBlinkN(180, 120,   0, 6); break;
+        case 2: startBlinkN(120,   0, 180, 4); break;
+        case 3: startBlinkN(180, 180, 180, 8); break;
+      }
+    }
 
     Serial.print("[CMD] "); Serial.print(param);
     Serial.print(" = "); Serial.println(value);

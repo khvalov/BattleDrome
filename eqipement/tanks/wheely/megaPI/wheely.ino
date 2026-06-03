@@ -55,13 +55,13 @@ const unsigned long IR_SWITCH_MS = 200;  // > 68 ms NEC frame; was 50 (too short
 uint8_t       activeRxPin  = IR_RX_PIN_1;
 unsigned long lastRxSwitch = 0;
 
-// ── Health LEDs (MeRGBLed / WS2812 2×2, pins A14 and A13) ───────────────────
-// Both LEDs mirror the same colour.
+// ── Health LEDs (MeRGBLed / WS2812 3×3, pins A14 and A13) ───────────────────
+// Two 3×3 matrices (9 LEDs each) always mirroring the same colour.
 // Boot:          yellow  (waiting for RPi)
 // RPi connected: switches to health-based colour
 // health > 50 → green | 5–50 → yellow | < 5 → red
-MeRGBLed led1;  // A14
-MeRGBLed led2;  // A13
+MeRGBLed led1;  // A14 — 3×3 matrix (9 LEDs)
+MeRGBLed led2;  // A13 — 3×3 matrix (9 LEDs)
 
 bool rpiConnected = false;
 
@@ -400,12 +400,16 @@ void updateHealthLed() {
 }
 
 // ── LED blink ──────────────────────────────────────────────────────────────────
-// Kick off a 2-blink sequence in the chosen colour.
+// startBlinkN — N half-periods (N/2 full blinks). Fires immediately.
+// startBlink  — convenience wrapper: 2 full blinks (4 half-periods).
 // updateBlink() must be called every loop() tick to advance the animation.
-void startBlink(uint8_t r, uint8_t g, uint8_t b) {
+void startBlinkN(uint8_t r, uint8_t g, uint8_t b, uint8_t n) {
   blinkR = r; blinkG = g; blinkB = b;
-  blinkSteps = 4;   // 4 half-periods = 2 full blinks
+  blinkSteps = n;
   blinkLast  = millis() - BLINK_INTERVAL_MS;  // fire first step immediately
+}
+void startBlink(uint8_t r, uint8_t g, uint8_t b) {
+  startBlinkN(r, g, b, 4);  // 4 half-periods = 2 full blinks
 }
 
 void updateBlink(unsigned long now) {
@@ -457,6 +461,15 @@ void handleSerialLine(const String& line) {
     else if (strcmp(param, "immunable") == 0)   immunable = (value != 0);
     else if (strcmp(param, "maxSpeed")  == 0)   maxSpeed  = constrain(value, 1, 255);
     else if (strcmp(param, "minSpeed")  == 0)   minSpeed  = constrain(value, 0, 255);
+    else if (strcmp(param, "led")       == 0) {
+      // Server-triggered LED effect.
+      // 1 = treasure  (gold ×3)    2 = immune (purple ×2)    3 = win/bonus (white ×4)
+      switch (value) {
+        case 1: startBlinkN(180, 120,   0, 6); break;
+        case 2: startBlinkN(120,   0, 180, 4); break;
+        case 3: startBlinkN(180, 180, 180, 8); break;
+      }
+    }
 
     Serial.print("[CMD] "); Serial.print(param);
     Serial.print(" = "); Serial.println(value);
@@ -497,8 +510,8 @@ void setup() {
   Serial.println(F(") — NEC software"));
 
   // Health LEDs — both yellow while waiting for RPi
-  led1.setpin(A14); led1.setNumber(4);
-  led2.setpin(A13); led2.setNumber(4);
+  led1.setpin(A14); led1.setNumber(9);   // 3×3 = 9 LEDs
+  led2.setpin(A13); led2.setNumber(9);   // 3×3 = 9 LEDs
   setAllLeds(180, 140, 0);  // yellow = not yet connected
 
   SPI.begin();

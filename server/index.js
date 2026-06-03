@@ -827,6 +827,9 @@ function handleTreasureHunt(scannerTankId, uid) {
   addScore(scannerTankId, pts);
   console.log(`[GAME] Treasure: ${scannerTankId} collected ${uid} (+${pts} pts). Total: ${game.scores[scannerTankId]}`);
 
+  // Notify the tank's LED: gold blink ×3 (effect 1)
+  sendCommand(scannerTankId, 'led', 1);
+
   // If the tag has a non-points RFID action, apply it too
   if (entry && entry.action !== 'points') {
     applyRfidAction(scannerTankId, entry);
