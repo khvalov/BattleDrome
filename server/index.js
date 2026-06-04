@@ -1075,6 +1075,13 @@ mqttClient.on('message', (topic, raw) => {
     // Send the authoritative health value back to the receiver
     sendCommand(tankId, 'health', newHealth);
 
+    // On confirmed kill: start police LED on the dying tank.
+    // The firmware also starts it locally on IR detection, but this covers
+    // edge cases (e.g. server-issued health=0 without a direct IR hit).
+    if (newHealth === 0) {
+      sendCommand(tankId, 'led', 4);
+    }
+
     // Free play kill tracking
     if (game.mode === 'free_play' && game.status === 'running' && newHealth === 0) {
       const wasAlive = (game.freeStates[tankId] || 'alive') !== 'dead';

@@ -86,8 +86,7 @@ void respawn() {
   health    = 100;
   ammo      = 100;
   isDead    = false;
-  updateHealthLed();
-  setMatrixAlive();
+  stopPoliceLed();
   Serial.println(F("[RESPAWN] Tank back in game!"));
 }
 
@@ -109,6 +108,12 @@ const unsigned long BLINK_INTERVAL_MS = 100;
 uint8_t       blinkSteps = 0;
 uint8_t       blinkR, blinkG, blinkB;
 unsigned long blinkLast  = 0;
+
+// ── Police LED state ───────────────────────────────────────────────────────────
+const unsigned long POLICE_INTERVAL_MS = 150;
+bool          policeActive = false;
+uint8_t       policePhase  = 0;
+unsigned long policeLast   = 0;
 
 // ── Command buffer ─────────────────────────────────────────────────────────────
 String cmdBuffer = "";
@@ -252,7 +257,7 @@ void handleIRReceive() {
 
             if (health == 0 && prev > 0) {
               isDead = true;
-              setMatrixDead();
+              startPoliceLed();
               Serial.println(F("[DEAD] Drive to home base to respawn"));
             }
           } else if (!isDead) {
@@ -391,7 +396,7 @@ void startBlink(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void updateBlink(unsigned long now) {
-  if (blinkSteps == 0) return;
+  if (blinkSteps == 0 || policeActive) return;  // police takes visual priority
   if (now - blinkLast < BLINK_INTERVAL_MS) return;
   blinkLast = now;
 
@@ -400,6 +405,29 @@ void updateBlink(unsigned long now) {
 
   blinkSteps--;
   if (blinkSteps == 0) updateHealthLed();
+}
+
+// ── Police LED — looping red/blue, active while tank is dead ──────────────────
+void startPoliceLed() {
+  blinkSteps   = 0;
+  policeActive = true;
+  policePhase  = 0;
+  policeLast   = millis() - POLICE_INTERVAL_MS;
+}
+
+void stopPoliceLed() {
+  policeActive = false;
+  updateHealthLed();
+}
+
+void updatePoliceLed(unsigned long now) {
+  if (!policeActive) return;
+  if (now - policeLast < POLICE_INTERVAL_MS) return;
+  policeLast = now;
+
+  if (policePhase == 0) setAllLeds(180,   0,   0);  // red
+  else                  setAllLeds(  0,   0, 180);  // blue
+  policePhase ^= 1;
 }
 
 // ── Serial handler ────────────────────────────────────────────────────────────
@@ -424,7 +452,7 @@ void handleSerialLine(const String& line) {
       health = constrain(value, 0, 100);
       if (isDead && health > 0) {
         isDead = false;
-        setMatrixAlive();
+        stopPoliceLed();
         Serial.println(F("[RESPAWN] Server restored health — back in game!"));
       }
       if      (health < prev) startBlink(180, 0,   0);
@@ -439,11 +467,13 @@ void handleSerialLine(const String& line) {
     else if (strcmp(param, "minSpeed")  == 0)   minSpeed  = constrain(value, 0, 255);
     else if (strcmp(param, "led")       == 0) {
       // Server-triggered LED effect.
-      // 1 = treasure (gold ×3)    2 = immune (purple ×2)    3 = win/bonus (white ×4)
+      // 1 = treasure (gold ×3)  2 = immune (purple ×2)  3 = win/bonus (white ×4)
+      // 4 = police (red/blue loop while dead — stopped automatically on respawn)
       switch (value) {
         case 1: startBlinkN(180, 120,   0, 6); break;
         case 2: startBlinkN(120,   0, 180, 4); break;
         case 3: startBlinkN(180, 180, 180, 8); break;
+        case 4: startPoliceLed();              break;
       }
     }
 
@@ -518,6 +548,7 @@ void loop() {
   unsigned long now = millis();
 
   updateBlink(now);
+  updatePoliceLed(now);
   handleIRReceive();
 
   // ── Death state ────────────────────────────────────────────────────────────
