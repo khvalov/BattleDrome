@@ -522,6 +522,10 @@ void setup() {
   matrix.setpin(A9); matrix.setNumber(16);
   setAllLeds(180, 140, 0);
 
+//RFID fix 
+pinMode(53, OUTPUT);
+digitalWrite(53, HIGH);  // Mega HW-SS: must stay HIGH or SPI drops to slave mode (kills RFID)
+
   SPI.begin();
   rfid.PCD_Init();
   Serial.print("RFID ready. SS_PIN="); Serial.print(SS_PIN);
