@@ -22,11 +22,12 @@
       margin-bottom: 2rem;
     }
 
-    header h1 {
-      font-size: 1.6rem;
-      letter-spacing: 0.1em;
-      color: #58a6ff;
-      text-transform: uppercase;
+    #header-logo {
+      height: 56px;
+      width: auto;
+      display: block;
+      /* black logo background blends into the dark page */
+      border-radius: 6px;
     }
 
     #connection-badge {
@@ -1007,7 +1008,7 @@
 <body>
 
 <header>
-  <h1>&#9876; BattleDrome</h1>
+  <img id="header-logo" src="/arena-stem-logo.jpg" alt="Arena STEM" />
   <span id="connection-badge" class="disconnected">CONNECTING</span>
 </header>
 

@@ -1217,6 +1217,20 @@ const httpServer = http.createServer(async (req, res) => {
     return;
   }
 
+  // ── Static assets (images, etc.) ───────────────────────────────────────────
+  if (req.method === 'GET') {
+    const MIME = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
+    const ext  = path.extname(url).toLowerCase();
+    if (MIME[ext]) {
+      const filePath = path.join(__dirname, 'public', path.basename(url));
+      if (fs.existsSync(filePath)) {
+        res.writeHead(200, { 'Content-Type': MIME[ext] });
+        res.end(fs.readFileSync(filePath));
+        return;
+      }
+    }
+  }
+
   // ── Game API ───────────────────────────────────────────────────────────────
 
   if (req.method === 'GET' && url === '/api/game') {
