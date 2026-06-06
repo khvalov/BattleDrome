@@ -134,10 +134,12 @@
 
     /* ── Tank settings panel (wrench) ── */
     .tank-settings {
+      display: none;           /* hidden by default; .open shows it */
       margin-top: 0.9rem;
       border-top: 1px solid #21262d;
       padding-top: 0.9rem;
     }
+    .tank-settings.open { display: block; }
     .tank-settings-title {
       font-size: 0.62rem;
       text-transform: uppercase;
@@ -1545,17 +1547,15 @@ function hasOverrides(tankId) {
 }
 
 function toggleTankSettings(id) {
-  const panel = document.getElementById(`ts-${id}`);
-  if (!panel) return;
-  if (_settingsOpen.has(id)) {
-    _settingsOpen.delete(id);
-    panel.style.display = 'none';
-  } else {
-    _settingsOpen.add(id);
-    panel.style.display = '';
-  }
-  const wb = panel.closest('.tank-card')?.querySelector('.btn-wrench');
-  if (wb) wb.classList.toggle('overrides-on', hasOverrides(id) || _settingsOpen.has(id));
+  // Toggle state first, then apply to DOM — _settingsOpen is the source of truth
+  if (_settingsOpen.has(id)) _settingsOpen.delete(id);
+  else                        _settingsOpen.add(id);
+
+  const isOpen = _settingsOpen.has(id);
+  const card   = grid.querySelector(`.tank-card[data-id="${CSS.escape(id)}"]`);
+  if (!card) return;
+  card.querySelector('.tank-settings')?.classList.toggle('open', isOpen);
+  card.querySelector('.btn-wrench')?.classList.toggle('overrides-on', hasOverrides(id) || isOpen);
 }
 
 async function applyTankSettings(tankId) {
@@ -1728,14 +1728,15 @@ function renderTanks(tanks) {
     card.className = `tank-card ${tank.online ? 'online' : 'offline'}`;
     if (tank.lastSeen) card.dataset.lastSeen = tank.lastSeen;
 
-    // If rename input has focus OR settings panel is open — only refresh telemetry bars
-    const settingsOpen = _settingsOpen.has(tank.id);
-    if (card.querySelector('.rename-input') === document.activeElement || settingsOpen) {
+    // Skip full re-render only when rename input OR a settings input has focus
+    // (preserves typed-but-not-yet-applied values). For all other cases we
+    // always re-render and then restore the open/close state from _settingsOpen.
+    const settingsInputFocused =
+      document.activeElement?.closest?.('.tank-settings')
+        ?.closest?.('.tank-card')?.dataset.id === tank.id;
+    if (card.querySelector('.rename-input') === document.activeElement || settingsInputFocused) {
       const tel = card.querySelector('.telemetry');
       if (tel) tel.innerHTML = telHtml(tank.telemetry);
-      // keep wrench tint in sync
-      const wb = card.querySelector('.btn-wrench');
-      if (wb) wb.classList.toggle('overrides-on', hasOverrides(tank.id));
       continue;
     }
 
@@ -1758,7 +1759,7 @@ function renderTanks(tanks) {
       </div>
       <div class="tank-meta">${tank.lastSeen ? `Last seen: ${timeSince(tank.lastSeen)}` : ''}</div>
       <div class="telemetry">${telHtml(tank.telemetry)}</div>
-      <div class="tank-settings" id="ts-${esc(tank.id)}" style="display:none">
+      <div class="tank-settings" id="ts-${esc(tank.id)}">
         <div class="tank-settings-title">&#9881; Tank Settings</div>
         <div class="ts-grid">
           <div class="ts-field">
@@ -1790,6 +1791,12 @@ function renderTanks(tanks) {
           <span class="ts-lock-badge ${hasOverrides(tank.id) ? 'show' : ''}">&#128274; locked</span>
         </div>
       </div>`;
+    // Restore settings panel open/closed state from _settingsOpen (source of truth)
+    card.querySelector('.tank-settings')
+        ?.classList.toggle('open', _settingsOpen.has(tank.id));
+    card.querySelector('.btn-wrench')
+        ?.classList.toggle('overrides-on', hasOverrides(tank.id) || _settingsOpen.has(tank.id));
+
     if (!wasOnline && tank.online) {
       card.classList.add('pulse');
       card.addEventListener('animationend', () => card.classList.remove('pulse'), { once: true });
