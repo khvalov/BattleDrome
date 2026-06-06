@@ -119,6 +119,65 @@
     }
     .btn-rename:hover { color: #8b949e; }
 
+    .btn-wrench {
+      background: none;
+      border: none;
+      color: #484f58;
+      cursor: pointer;
+      font-size: 0.78rem;
+      padding: 0 0.25rem;
+      line-height: 1;
+      transition: color 0.15s;
+    }
+    .btn-wrench:hover          { color: #e3b341; }
+    .btn-wrench.overrides-on   { color: #e3b341; }
+
+    /* ── Tank settings panel (wrench) ── */
+    .tank-settings {
+      margin-top: 0.9rem;
+      border-top: 1px solid #21262d;
+      padding-top: 0.9rem;
+    }
+    .tank-settings-title {
+      font-size: 0.62rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: #484f58;
+      margin-bottom: 0.65rem;
+    }
+    .ts-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.55rem 1rem;
+      margin-bottom: 0.75rem;
+    }
+    .ts-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+    .ts-field label {
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: #484f58;
+    }
+    .ts-field input {
+      width: 100%;
+    }
+    .ts-actions {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .ts-lock-badge {
+      font-size: 0.62rem;
+      color: #e3b341;
+      margin-left: auto;
+      display: none;
+    }
+    .ts-lock-badge.show { display: inline; }
+
     .rename-form {
       display: flex;
       gap: 0.4rem;
@@ -1471,6 +1530,76 @@ let _tanks       = [];
 let _gameState   = null;
 let _ws;
 let _currentPage = 'dashboard';
+
+// ── Tank overrides (wrench panel) ─────────────────────────────────────────────
+// Persisted in memory until page refresh. Re-applied automatically whenever
+// a server event resets a param (round start/stop, defaults reset, etc.).
+const _tankOverrides   = {};   // { tankId: { param: value, … } }
+const _overrideLastSent = {};  // { 'tankId:param': timestamp } — throttle guard
+const _settingsOpen    = new Set();  // tankIds whose settings panel is visible
+const OVERRIDE_PARAMS  = ['maxSpeed', 'minSpeed', 'ammoLevel', 'fireSpeed'];
+const OVERRIDE_THROTTLE_MS = 2500;
+
+function hasOverrides(tankId) {
+  return Object.keys(_tankOverrides[tankId] || {}).length > 0;
+}
+
+function toggleTankSettings(id) {
+  const panel = document.getElementById(`ts-${id}`);
+  if (!panel) return;
+  if (_settingsOpen.has(id)) {
+    _settingsOpen.delete(id);
+    panel.style.display = 'none';
+  } else {
+    _settingsOpen.add(id);
+    panel.style.display = '';
+  }
+  const wb = panel.closest('.tank-card')?.querySelector('.btn-wrench');
+  if (wb) wb.classList.toggle('overrides-on', hasOverrides(id) || _settingsOpen.has(id));
+}
+
+async function applyTankSettings(tankId) {
+  _tankOverrides[tankId] = _tankOverrides[tankId] || {};
+  for (const param of OVERRIDE_PARAMS) {
+    const inp = document.getElementById(`ts-${param}-${tankId}`);
+    if (!inp) continue;
+    const value = Number(inp.value);
+    if (isNaN(value)) continue;
+    _tankOverrides[tankId][param] = value;
+    await api('POST', `/api/tanks/${encodeURIComponent(tankId)}/command`, { param, value });
+    _overrideLastSent[`${tankId}:${param}`] = Date.now();
+  }
+  // Update badge
+  const badge = document.querySelector(`#ts-${tankId} .ts-lock-badge`);
+  if (badge) badge.classList.toggle('show', hasOverrides(tankId));
+  const wb = document.querySelector(`.tank-card[data-id="${tankId}"] .btn-wrench`);
+  if (wb) wb.classList.add('overrides-on');
+}
+
+function clearTankOverrides(tankId) {
+  delete _tankOverrides[tankId];
+  const badge = document.querySelector(`#ts-${tankId} .ts-lock-badge`);
+  if (badge) badge.classList.remove('show');
+  const wb = document.querySelector(`.tank-card[data-id="${tankId}"] .btn-wrench`);
+  if (wb) wb.classList.remove('overrides-on');
+}
+
+// Called on every 'update' message — re-sends any locked param that drifted
+// (e.g. server reset it on round start/stop).
+function reapplyOverrides(tanks) {
+  const now = Date.now();
+  for (const [tankId, overrides] of Object.entries(_tankOverrides)) {
+    const tank = tanks.find(t => t.id === tankId);
+    if (!tank?.online || !tank.telemetry) continue;
+    for (const [param, target] of Object.entries(overrides)) {
+      if (tank.telemetry[param] === target) continue;
+      const key = `${tankId}:${param}`;
+      if ((now - (_overrideLastSent[key] || 0)) < OVERRIDE_THROTTLE_MS) continue;
+      _overrideLastSent[key] = now;
+      api('POST', `/api/tanks/${encodeURIComponent(tankId)}/command`, { param, value: target });
+    }
+  }
+}
 let _logUnread   = 0;
 let _tagsUnread  = 0;
 
@@ -1507,7 +1636,7 @@ function connect() {
   _ws.onmessage = ({ data }) => {
     const msg = JSON.parse(data);
     switch (msg.type) {
-      case 'update':       _tanks = msg.tanks; renderTanks(msg.tanks); updateFpvHud(); break;
+      case 'update':       _tanks = msg.tanks; renderTanks(msg.tanks); updateFpvHud(); reapplyOverrides(msg.tanks); break;
       case 'log':          appendLog(msg); break;
       case 'rfid_actions': renderRfidRules(msg.actions); break;
       case 'win':          showWinOverlay(msg); break;
@@ -1599,26 +1728,68 @@ function renderTanks(tanks) {
     card.className = `tank-card ${tank.online ? 'online' : 'offline'}`;
     if (tank.lastSeen) card.dataset.lastSeen = tank.lastSeen;
 
-    if (card.querySelector('.rename-input') === document.activeElement) {
+    // If rename input has focus OR settings panel is open — only refresh telemetry bars
+    const settingsOpen = _settingsOpen.has(tank.id);
+    if (card.querySelector('.rename-input') === document.activeElement || settingsOpen) {
       const tel = card.querySelector('.telemetry');
       if (tel) tel.innerHTML = telHtml(tank.telemetry);
+      // keep wrench tint in sync
+      const wb = card.querySelector('.btn-wrench');
+      if (wb) wb.classList.toggle('overrides-on', hasOverrides(tank.id));
       continue;
     }
 
     const dispName  = tank.displayName || tank.id;
     const idLabel   = tank.displayName ? `<span class="tank-id-label">(${esc(tank.id)})</span>` : '';
-    const tankIp = tank.telemetry?.ip || '';
+    const tankIp    = tank.telemetry?.ip || '';
+    const ov        = _tankOverrides[tank.id] || {};
+    const tel       = tank.telemetry  || {};
     card.innerHTML = `
       <div class="tank-header">
         <div class="status-dot"></div>
         <span class="tank-name" id="tname-${esc(tank.id)}">${esc(dispName)}</span>
         ${idLabel}
         <button class="btn-rename" onclick="startRename('${esc(tank.id)}')">&#9998;</button>
+        <button class="btn-wrench ${hasOverrides(tank.id) ? 'overrides-on' : ''}"
+                onclick="toggleTankSettings('${esc(tank.id)}')"
+                title="Tank settings">&#9881;</button>
         <button class="btn-fpv" onclick="openFpv('${esc(tank.id)}','${esc(tankIp)}')" ${tankIp && tank.online ? '' : 'disabled'}>&#128247; FPV</button>
         <span class="tank-status-label">${tank.online ? 'ONLINE' : 'OFFLINE'}</span>
       </div>
       <div class="tank-meta">${tank.lastSeen ? `Last seen: ${timeSince(tank.lastSeen)}` : ''}</div>
-      <div class="telemetry">${telHtml(tank.telemetry)}</div>`;
+      <div class="telemetry">${telHtml(tank.telemetry)}</div>
+      <div class="tank-settings" id="ts-${esc(tank.id)}" style="display:none">
+        <div class="tank-settings-title">&#9881; Tank Settings</div>
+        <div class="ts-grid">
+          <div class="ts-field">
+            <label>Max Speed (1–255)</label>
+            <input type="number" id="ts-maxSpeed-${esc(tank.id)}" min="1" max="255"
+                   value="${ov.maxSpeed ?? tel.maxSpeed ?? 160}" />
+          </div>
+          <div class="ts-field">
+            <label>Min Speed (0–255)</label>
+            <input type="number" id="ts-minSpeed-${esc(tank.id)}" min="0" max="255"
+                   value="${ov.minSpeed ?? tel.minSpeed ?? 20}" />
+          </div>
+          <div class="ts-field">
+            <label>Ammo Level (1–10)</label>
+            <input type="number" id="ts-ammoLevel-${esc(tank.id)}" min="1" max="10"
+                   value="${ov.ammoLevel ?? tel.ammoLevel ?? 1}" />
+          </div>
+          <div class="ts-field">
+            <label>Fire Speed (1–10)</label>
+            <input type="number" id="ts-fireSpeed-${esc(tank.id)}" min="1" max="10"
+                   value="${ov.fireSpeed ?? tel.fireSpeed ?? 1}" />
+          </div>
+        </div>
+        <div class="ts-actions">
+          <button class="btn btn-primary"
+                  onclick="applyTankSettings('${esc(tank.id)}')">&#128274; Apply &amp; Lock</button>
+          <button class="btn btn-danger"
+                  onclick="clearTankOverrides('${esc(tank.id)}')">&#128275; Clear Lock</button>
+          <span class="ts-lock-badge ${hasOverrides(tank.id) ? 'show' : ''}">&#128274; locked</span>
+        </div>
+      </div>`;
     if (!wasOnline && tank.online) {
       card.classList.add('pulse');
       card.addEventListener('animationend', () => card.classList.remove('pulse'), { once: true });

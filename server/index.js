@@ -1473,6 +1473,29 @@ const httpServer = http.createServer(async (req, res) => {
     return;
   }
 
+  // POST /api/tanks/:id/command  { "param": "maxSpeed", "value": 200 }
+  // Sends an immediate MQTT command to the tank. Used by the dashboard
+  // wrench panel; the client stores overrides and re-calls this whenever
+  // the server resets a parameter (round start/stop).
+  if (url.startsWith('/api/tanks/') && url.endsWith('/command') && req.method === 'POST') {
+    const tankId = decodeURIComponent(url.slice('/api/tanks/'.length, -'/command'.length));
+    let body;
+    try { body = await readBody(req); } catch {
+      res.writeHead(400); res.end('Invalid JSON'); return;
+    }
+    const { param, value } = body;
+    const VALID = ['health','ammo','ammoLevel','fireSpeed','immunable','maxSpeed','minSpeed','led'];
+    if (!VALID.includes(param) || value === undefined) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'invalid param or value' }));
+      return;
+    }
+    sendCommand(tankId, param, Number(value));
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
   if (url.startsWith('/api/rfid/') && req.method === 'DELETE') {
     const uid = url.slice('/api/rfid/'.length).toUpperCase();
     if (RFID_ACTIONS[uid]) {
