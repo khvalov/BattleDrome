@@ -107,9 +107,9 @@ Download the ARM binary for Pi Zero:
 
 ```bash
 cd /home/pi
-wget https://github.com/bluenviron/mediamtx/releases/download/v1.9.0/mediamtx_v1.9.0_linux_armv6l.tar.gz
-tar xzf mediamtx_v1.9.0_linux_armv6l.tar.gz
-rm mediamtx_v1.9.0_linux_armv6l.tar.gz
+wget https://github.com/bluenviron/mediamtx/releases/download/v1.19.2/mediamtx_v1.19.2_linux_armv6.tar.gz
+tar xzf mediamtx_v1.19.2_linux_armv6.tar.gz
+rm mediamtx_v1.19.2_linux_armv6.tar.gz
 ```
 
 **Step 2 — Configure mediamtx**
